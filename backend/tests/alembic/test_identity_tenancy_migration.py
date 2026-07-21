@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -28,7 +29,8 @@ def test_identity_tenancy_migration_metadata_and_bootstrap_constants() -> None:
 
     assert module.revision == "20260721_0002"
     assert module.down_revision == "20260721_0001"
-    assert module.BOOTSTRAP_ORGANIZATION_ID == "00000000-0000-0000-0000-000000000001"
+    bootstrap_organization_id = UUID("00000000-0000-0000-0000-000000000001")
+    assert bootstrap_organization_id == module.BOOTSTRAP_ORGANIZATION_ID
     assert module.BOOTSTRAP_ORGANIZATION_SLUG == "legacy-bootstrap"
 
 
@@ -74,6 +76,12 @@ def test_upgrade_creates_identity_tables_and_backfills_existing_companies() -> N
     statements = [str(call.args[0]) for call in execute.call_args_list]
     assert any("INSERT INTO organizations" in statement for statement in statements)
     assert any("UPDATE companies SET organization_id" in statement for statement in statements)
+    id_parameters = [call.args[0]._bindparams["id"] for call in execute.call_args_list]
+    assert all(parameter.value == module.BOOTSTRAP_ORGANIZATION_ID for parameter in id_parameters)
+    assert all(
+        isinstance(parameter.type, postgresql.UUID) and parameter.type.as_uuid
+        for parameter in id_parameters
+    )
     membership_role_column = next(
         column
         for column in create_table.call_args_list[2].args

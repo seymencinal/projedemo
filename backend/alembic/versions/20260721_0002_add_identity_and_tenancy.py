@@ -6,6 +6,7 @@ Create Date: 2026-07-21 00:00:01
 """
 
 from collections.abc import Sequence
+from uuid import UUID
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -17,7 +18,7 @@ down_revision: str | None = "20260721_0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-BOOTSTRAP_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001"
+BOOTSTRAP_ORGANIZATION_ID = UUID("00000000-0000-0000-0000-000000000001")
 BOOTSTRAP_ORGANIZATION_SLUG = "legacy-bootstrap"
 
 
@@ -31,6 +32,11 @@ def upgrade() -> None:
         create_type=False,
     )
     membership_role.create(op.get_bind(), checkfirst=True)
+    bootstrap_organization_id = sa.bindparam(
+        "id",
+        value=BOOTSTRAP_ORGANIZATION_ID,
+        type_=postgresql.UUID(as_uuid=True),
+    )
 
     op.create_table(
         "organizations",
@@ -92,7 +98,7 @@ def upgrade() -> None:
             "INSERT INTO organizations (id, name, slug) VALUES (:id, :name, :slug) "
             "ON CONFLICT (id) DO NOTHING"
         ).bindparams(
-            id=BOOTSTRAP_ORGANIZATION_ID,
+            bootstrap_organization_id,
             name="Legacy Bootstrap Organization",
             slug=BOOTSTRAP_ORGANIZATION_SLUG,
         )
@@ -102,7 +108,7 @@ def upgrade() -> None:
         sa.text(
             "UPDATE companies SET organization_id = :id WHERE organization_id IS NULL"
         ).bindparams(
-            id=BOOTSTRAP_ORGANIZATION_ID,
+            bootstrap_organization_id,
         )
     )
     op.alter_column("companies", "organization_id", nullable=False)
