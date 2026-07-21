@@ -1,0 +1,149 @@
+[build-system]
+requires = ["hatchling>=1.25,<2.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "market-intelligence-api"
+version = "0.1.0"
+description = "Production API for the AI Market Intelligence Platform."
+readme = { text = "Production API for the AI Market Intelligence Platform.", content-type = "text/markdown" }
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+authors = [
+  { name = "Market Intelligence Team" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Private :: Do Not Upload",
+]
+dependencies = [
+  "alembic>=1.14,<2.0",
+  "celery[redis]>=5.4,<6.0",
+  "cryptography>=43,<46",
+  "email-validator>=2.2,<3.0",
+  "fastapi>=0.115,<1.0",
+  "httpx>=0.27,<1.0",
+  "openai>=1.0,<3.0",
+  "orjson>=3.10,<4.0",
+  "pgvector>=0.3,<1.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "pydantic-settings>=2.6,<3.0",
+  "python-json-logger>=3.2,<4.0",
+  "python-multipart>=0.0.18,<1.0",
+  "redis>=5.2,<7.0",
+  "sqlalchemy>=2.0,<3.0",
+  "tenacity>=9.0,<10.0",
+  "uvicorn[standard]>=0.32,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13,<2.0",
+  "pytest>=8.3,<10.0",
+  "pytest-asyncio>=0.24,<1.0",
+  "pytest-cov>=6.0,<8.0",
+  "ruff>=0.8,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+  "--cov=app",
+  "--cov-branch",
+  "--cov-report=term-missing:skip-covered",
+  "--cov-report=xml",
+]
+markers = [
+  "integration: tests requiring a real PostgreSQL database",
+  "e2e: end-to-end user-flow tests",
+  "ai: tests that exercise AI provider contracts or evaluation fixtures",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+  "app/database/migrations/*",
+]
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
+fail_under = 80
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+extend-exclude = ["app/database/migrations"]
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ASYNC",
+  "B",
+  "C4",
+  "E",
+  "F",
+  "I",
+  "N",
+  "PIE",
+  "RUF",
+  "S",
+  "SIM",
+  "UP",
+  "W",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app", "tests"]
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+show_error_codes = true
+pretty = true
+exclude = ["app/database/migrations/"]
+
+[[tool.mypy.overrides]]
+module = [
+  "celery.*",
+  "pgvector.*",
+  "pythonjsonlogger.*",
+]
+ignore_missing_imports = true
