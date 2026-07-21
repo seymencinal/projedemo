@@ -47,6 +47,13 @@ def test_build_database_url_handles_special_characters() -> None:
     assert password not in str(url)
 
 
+def test_build_database_url_rejects_missing_credentials() -> None:
+    settings = Settings.model_construct(database_user=None, database_password=None)
+
+    with pytest.raises(RuntimeError, match="Database credentials are not configured"):
+        build_database_url(settings)
+
+
 def test_create_database_engine() -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 

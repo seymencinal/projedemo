@@ -20,25 +20,28 @@ class CompanyService:
         self._session = session
         self._repository = repository or CompanyRepository(session)
 
-    async def get_by_id(self, company_id: UUID) -> Company:
-        company = await self._repository.get_by_id(company_id)
+    async def get_by_id(self, company_id: UUID, organization_id: UUID) -> Company:
+        company = await self._repository.get_by_id(company_id, organization_id)
         if company is None:
             raise CompanyNotFoundError(company_id)
         return company
 
     async def list(
         self,
+        organization_id: UUID,
         *,
         offset: int = 0,
         limit: int = 100,
     ) -> list[Company]:
         return await self._repository.list(
+            organization_id,
             offset=offset,
             limit=limit,
         )
 
-    async def create(self, payload: CompanyCreate) -> Company:
+    async def create(self, organization_id: UUID, payload: CompanyCreate) -> Company:
         existing_company = await self._repository.get_by_exchange_and_ticker(
+            organization_id,
             payload.exchange,
             payload.ticker,
         )
@@ -49,6 +52,7 @@ class CompanyService:
             )
 
         company = Company(
+            organization_id=organization_id,
             **payload.model_dump(),
         )
         company = await self._repository.add(company)
@@ -59,9 +63,10 @@ class CompanyService:
     async def update(
         self,
         company_id: UUID,
+        organization_id: UUID,
         payload: CompanyUpdate,
     ) -> Company:
-        company = await self._repository.get_by_id(company_id)
+        company = await self._repository.get_by_id(company_id, organization_id)
         if company is None:
             raise CompanyNotFoundError(company_id)
 
@@ -75,6 +80,7 @@ class CompanyService:
             exchange = exchange_value if isinstance(exchange_value, str) else company.exchange
             ticker = ticker_value if isinstance(ticker_value, str) else company.ticker
             existing_company = await self._repository.get_by_exchange_and_ticker(
+                organization_id,
                 exchange=exchange,
                 ticker=ticker,
             )
@@ -92,8 +98,9 @@ class CompanyService:
     async def delete(
         self,
         company_id: UUID,
+        organization_id: UUID,
     ) -> None:
-        company = await self._repository.get_by_id(company_id)
+        company = await self._repository.get_by_id(company_id, organization_id)
         if company is None:
             raise CompanyNotFoundError(company_id)
 

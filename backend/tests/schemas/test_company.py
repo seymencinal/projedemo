@@ -163,6 +163,7 @@ def test_company_read_accepts_dictionary_data() -> None:
     updated_at = datetime(2026, 1, 2, 11, 45, tzinfo=UTC)
     company = CompanyRead(
         id=company_id,
+        organization_id=uuid4(),
         name="Example Company",
         ticker="EXM",
         exchange="NASDAQ",
@@ -189,6 +190,7 @@ def test_company_read_accepts_dictionary_data() -> None:
 def test_company_read_supports_attribute_based_validation() -> None:
     source = SimpleNamespace(
         id=uuid4(),
+        organization_id=uuid4(),
         name="Example Company",
         ticker="EXM",
         exchange="NASDAQ",
@@ -225,6 +227,7 @@ def test_company_read_supports_attribute_based_validation() -> None:
 def test_company_read_requires_system_fields(missing_field: str) -> None:
     data: dict[str, object] = {
         "id": uuid4(),
+        "organization_id": uuid4(),
         "name": "Example Company",
         "ticker": "EXM",
         "exchange": "NASDAQ",

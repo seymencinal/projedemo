@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -11,9 +11,12 @@ from app.api.dependencies.database import get_database_resources
 from app.api.routes.general import router as general_router
 from app.db.session import DatabaseResources
 from app.models.company import Company
+from app.models.organization import Organization
 from app.repositories.company import CompanyRepository
 
 pytestmark = pytest.mark.integration
+
+BOOTSTRAP_ORGANIZATION_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 
 def create_company(
@@ -24,6 +27,7 @@ def create_company(
     isin: str | None = "US1234567890",
 ) -> Company:
     return Company(
+        organization_id=BOOTSTRAP_ORGANIZATION_ID,
         name=name,
         ticker=ticker,
         exchange=exchange,
@@ -72,7 +76,7 @@ async def test_get_by_id_returns_persisted_company(
     company_id = company.id
     integration_session.expunge_all()
 
-    result = await repository.get_by_id(company_id)
+    result = await repository.get_by_id(company_id, BOOTSTRAP_ORGANIZATION_ID)
 
     assert result is not None
     assert result.id == company_id
@@ -87,7 +91,7 @@ async def test_get_by_id_returns_none_when_missing(
 ) -> None:
     repository = CompanyRepository(integration_session)
 
-    result = await repository.get_by_id(uuid4())
+    result = await repository.get_by_id(uuid4(), BOOTSTRAP_ORGANIZATION_ID)
 
     assert result is None
 
@@ -100,7 +104,7 @@ async def test_get_by_exchange_and_ticker_returns_persisted_company(
     company = create_company()
     await repository.add(company)
 
-    result = await repository.get_by_exchange_and_ticker("NASDAQ", "EXM")
+    result = await repository.get_by_exchange_and_ticker(BOOTSTRAP_ORGANIZATION_ID, "NASDAQ", "EXM")
 
     assert result is not None
     assert result.id == company.id
@@ -114,7 +118,9 @@ async def test_get_by_exchange_and_ticker_returns_none_when_missing(
 ) -> None:
     repository = CompanyRepository(integration_session)
 
-    result = await repository.get_by_exchange_and_ticker("NYSE", "MISSING")
+    result = await repository.get_by_exchange_and_ticker(
+        BOOTSTRAP_ORGANIZATION_ID, "NYSE", "MISSING"
+    )
 
     assert result is None
 
@@ -131,7 +137,7 @@ async def test_list_applies_pagination_and_name_ordering(
     ):
         await repository.add(create_company(name=name, ticker=ticker, isin=isin))
 
-    result = await repository.list(offset=1, limit=1)
+    result = await repository.list(BOOTSTRAP_ORGANIZATION_ID, offset=1, limit=1)
 
     assert len(result) == 1
     assert result[0].name == "Beta"
@@ -230,6 +236,22 @@ async def test_nullable_isin_permits_multiple_nulls(
     assert first.id is not None
     assert second.id is not None
     assert first.id != second.id
+
+
+@pytest.mark.asyncio
+async def test_repository_does_not_return_companies_from_another_organization(
+    integration_session: AsyncSession,
+) -> None:
+    other_organization = Organization(name="Other", slug=f"other-{uuid4().hex[:8]}")
+    integration_session.add(other_organization)
+    await integration_session.flush()
+    company = create_company()
+    company.organization_id = other_organization.id
+    repository = CompanyRepository(integration_session)
+    await repository.add(company)
+
+    assert await repository.get_by_id(company.id, BOOTSTRAP_ORGANIZATION_ID) is None
+    assert await repository.list(BOOTSTRAP_ORGANIZATION_ID) == []
 
 
 @pytest.mark.asyncio

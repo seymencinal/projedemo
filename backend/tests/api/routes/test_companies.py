@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.dependencies.company import get_company_service
+from app.api.dependencies.tenant import get_temporary_organization_id
 from app.api.exception_handlers import register_exception_handlers
 from app.api.router import api_router
 from app.api.routes.companies import router as companies_router
@@ -17,17 +18,21 @@ from app.models.company import Company
 from app.schemas.company import CompanyCreate, CompanyUpdate
 from app.services.company import CompanyService
 
+ORGANIZATION_ID = uuid4()
+
 
 def create_test_client(service: CompanyService) -> TestClient:
     app = FastAPI()
     register_exception_handlers(app)
     app.include_router(companies_router)
     app.dependency_overrides[get_company_service] = lambda: service
+    app.dependency_overrides[get_temporary_organization_id] = lambda: ORGANIZATION_ID
     return TestClient(app)
 
 
 def create_company() -> Company:
     company = Company(
+        organization_id=ORGANIZATION_ID,
         name="Example Company",
         ticker="EXM",
         exchange="NASDAQ",
@@ -90,7 +95,7 @@ def test_create_company_returns_created_company() -> None:
         },
     )
     body = response.json()
-    payload = service.create.await_args.args[0]
+    organization_id, payload = service.create.await_args.args
 
     assert response.status_code == 201
     assert body["id"] == str(company.id)
@@ -104,6 +109,7 @@ def test_create_company_returns_created_company() -> None:
     assert datetime.fromisoformat(body["created_at"].replace("Z", "+00:00")) == company.created_at
     assert datetime.fromisoformat(body["updated_at"].replace("Z", "+00:00")) == company.updated_at
     service.create.assert_awaited_once()
+    assert organization_id == ORGANIZATION_ID
     assert isinstance(payload, CompanyCreate)
     assert payload.name == "Example Company"
     assert payload.ticker == "EXM"
@@ -169,6 +175,7 @@ def test_list_companies_returns_companies() -> None:
     assert response.json()[0]["id"] == str(first.id)
     assert response.json()[1]["id"] == str(second.id)
     service.list.assert_awaited_once_with(
+        ORGANIZATION_ID,
         offset=10,
         limit=25,
     )
@@ -184,6 +191,7 @@ def test_list_companies_uses_default_pagination() -> None:
     assert response.status_code == 200
     assert response.json() == []
     service.list.assert_awaited_once_with(
+        ORGANIZATION_ID,
         offset=0,
         limit=100,
     )
@@ -238,7 +246,7 @@ def test_get_company_returns_company() -> None:
 
     assert response.status_code == 200
     assert response.json()["id"] == str(company.id)
-    service.get_by_id.assert_awaited_once_with(company.id)
+    service.get_by_id.assert_awaited_once_with(company.id, ORGANIZATION_ID)
 
 
 def test_get_company_returns_not_found_when_missing() -> None:
@@ -251,7 +259,7 @@ def test_get_company_returns_not_found_when_missing() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": f"Company with id '{company_id}' was not found."}
-    service.get_by_id.assert_awaited_once_with(company_id)
+    service.get_by_id.assert_awaited_once_with(company_id, ORGANIZATION_ID)
 
 
 def test_get_company_rejects_invalid_uuid() -> None:
@@ -281,7 +289,7 @@ def test_update_company_returns_updated_company() -> None:
             "is_active": False,
         },
     )
-    company_id, payload = service.update.await_args.args
+    company_id, organization_id, payload = service.update.await_args.args
 
     assert response.status_code == 200
     assert response.json()["id"] == str(company.id)
@@ -290,6 +298,7 @@ def test_update_company_returns_updated_company() -> None:
     assert response.json()["is_active"] is False
     service.update.assert_awaited_once()
     assert company_id == company.id
+    assert organization_id == ORGANIZATION_ID
     assert isinstance(payload, CompanyUpdate)
     assert payload.name == "Updated Company"
     assert payload.website is None
@@ -303,10 +312,11 @@ def test_update_company_accepts_empty_payload() -> None:
     client = create_test_client(service)
 
     response = client.patch(f"/companies/{company.id}", json={})
-    _, payload = service.update.await_args.args
+    _, organization_id, payload = service.update.await_args.args
 
     assert response.status_code == 200
     service.update.assert_awaited_once()
+    assert organization_id == ORGANIZATION_ID
     assert isinstance(payload, CompanyUpdate)
     assert payload.model_dump(exclude_unset=True) == {}
 
@@ -381,7 +391,7 @@ def test_delete_company_returns_no_content() -> None:
 
     assert response.status_code == 204
     assert response.content == b""
-    service.delete.assert_awaited_once_with(company_id)
+    service.delete.assert_awaited_once_with(company_id, ORGANIZATION_ID)
 
 
 def test_delete_company_returns_not_found_when_missing() -> None:
@@ -416,6 +426,7 @@ def test_api_router_includes_company_routes() -> None:
     app = FastAPI()
     app.include_router(api_router)
     app.dependency_overrides[get_company_service] = lambda: service
+    app.dependency_overrides[get_temporary_organization_id] = lambda: ORGANIZATION_ID
     client = TestClient(app)
 
     assert client.get("/companies").status_code == 200

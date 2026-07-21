@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.db.base import Base
 from app.models.company import Company
+from app.models.membership import Membership
+from app.models.organization import Organization
+from app.models.user import User
 
 config = context.config
 logger = logging.getLogger(__name__)
@@ -17,6 +20,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 assert Company.__table__ is Base.metadata.tables["companies"]  # noqa: S101
+assert Membership.__table__ is Base.metadata.tables["memberships"]  # noqa: S101
+assert Organization.__table__ is Base.metadata.tables["organizations"]  # noqa: S101
+assert User.__table__ is Base.metadata.tables["users"]  # noqa: S101
 
 target_metadata = Base.metadata
 

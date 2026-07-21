@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import uuid4
 
 from sqlalchemy import Boolean, String, Table, Text, UniqueConstraint
 
@@ -15,6 +16,7 @@ def test_company_table_is_registered() -> None:
 def test_company_defines_expected_columns() -> None:
     assert set(Company.__table__.columns.keys()) == {
         "id",
+        "organization_id",
         "name",
         "ticker",
         "exchange",
@@ -73,16 +75,17 @@ def test_company_inherits_common_columns() -> None:
     assert Company.__table__.columns["updated_at"].nullable is False
 
 
-def test_company_has_exchange_ticker_unique_constraint() -> None:
+def test_company_has_organization_exchange_ticker_unique_constraint() -> None:
     table = cast(Table, Company.__table__)
     unique_constraint = next(
         constraint
         for constraint in table.constraints
         if isinstance(constraint, UniqueConstraint)
-        and [column.name for column in constraint.columns] == ["exchange", "ticker"]
+        and [column.name for column in constraint.columns]
+        == ["organization_id", "exchange", "ticker"]
     )
 
-    assert unique_constraint.name == "uq_companies_exchange"
+    assert unique_constraint.name == "uq_companies_organization_id"
 
 
 def test_company_has_isin_unique_constraint() -> None:
@@ -109,6 +112,7 @@ def test_company_has_name_index() -> None:
 
 def test_company_can_be_instantiated_without_database() -> None:
     company = Company(
+        organization_id=uuid4(),
         name="Example Company",
         ticker="EXM",
         exchange="NASDAQ",

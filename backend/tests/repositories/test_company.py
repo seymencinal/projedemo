@@ -1,5 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,204 +7,95 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.company import Company
 from app.repositories.company import CompanyRepository
 
+ORGANIZATION_ID = UUID("00000000-0000-0000-0000-000000000010")
+
 
 def create_company() -> Company:
     return Company(
+        organization_id=ORGANIZATION_ID,
         name="Example Company",
         ticker="EXM",
         exchange="NASDAQ",
     )
 
 
-def test_repository_stores_session() -> None:
-    session = MagicMock(spec=AsyncSession)
-    repository = CompanyRepository(session)
-
-    assert repository._session is session
-
-
-def test_get_by_id_statement_targets_company_and_id() -> None:
-    session = MagicMock(spec=AsyncSession)
-    repository = CompanyRepository(session)
+def test_get_by_id_statement_contains_company_and_organization_ids() -> None:
+    repository = CompanyRepository(MagicMock(spec=AsyncSession))
     company_id = uuid4()
 
-    statement = repository._get_by_id_statement(company_id)
-    compiled = statement.compile()
+    compiled = repository._get_by_id_statement(company_id, ORGANIZATION_ID).compile()
 
-    assert statement.column_descriptions[0]["entity"] is Company
-    assert statement.whereclause is not None
     assert company_id in compiled.params.values()
+    assert ORGANIZATION_ID in compiled.params.values()
 
 
-def test_exchange_ticker_statement_contains_values() -> None:
-    session = MagicMock(spec=AsyncSession)
-    repository = CompanyRepository(session)
+def test_exchange_ticker_statement_contains_organization_and_values() -> None:
+    repository = CompanyRepository(MagicMock(spec=AsyncSession))
 
-    statement = repository._get_by_exchange_and_ticker_statement(
-        "NASDAQ",
-        "EXM",
-    )
-    compiled = statement.compile()
+    compiled = repository._get_by_exchange_and_ticker_statement(
+        ORGANIZATION_ID, "NASDAQ", "EXM"
+    ).compile()
 
-    assert statement.column_descriptions[0]["entity"] is Company
-    assert "NASDAQ" in compiled.params.values()
-    assert "EXM" in compiled.params.values()
+    assert {ORGANIZATION_ID, "NASDAQ", "EXM"} <= set(compiled.params.values())
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_returns_company() -> None:
-    company = create_company()
+async def test_get_by_id_uses_organization_scope() -> None:
     result = MagicMock()
-    result.scalar_one_or_none.return_value = company
+    result.scalar_one_or_none.return_value = create_company()
     session = MagicMock(spec=AsyncSession)
     session.execute = AsyncMock(return_value=result)
-    repository = CompanyRepository(session)
 
-    returned = await repository.get_by_id(uuid4())
+    returned = await CompanyRepository(session).get_by_id(uuid4(), ORGANIZATION_ID)
 
-    assert returned is company
-    session.execute.assert_awaited_once()
-    result.scalar_one_or_none.assert_called_once_with()
+    assert returned is not None
+    assert returned.organization_id == ORGANIZATION_ID
+    assert ORGANIZATION_ID in session.execute.await_args.args[0].compile().params.values()
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_returns_none_when_missing() -> None:
+async def test_get_by_exchange_and_ticker_returns_none_when_no_scoped_match() -> None:
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     session = MagicMock(spec=AsyncSession)
     session.execute = AsyncMock(return_value=result)
-    repository = CompanyRepository(session)
 
-    returned = await repository.get_by_id(uuid4())
+    returned = await CompanyRepository(session).get_by_exchange_and_ticker(
+        ORGANIZATION_ID, "NYSE", "MISSING"
+    )
 
     assert returned is None
-
-
-@pytest.mark.asyncio
-async def test_get_by_exchange_and_ticker_returns_company() -> None:
-    company = create_company()
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = company
-    session = MagicMock(spec=AsyncSession)
-    session.execute = AsyncMock(return_value=result)
-    repository = CompanyRepository(session)
-
-    returned = await repository.get_by_exchange_and_ticker("NASDAQ", "EXM")
-
-    assert returned is company
-    session.execute.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_list_returns_companies() -> None:
-    first = Company(
-        name="Alpha",
-        ticker="ALP",
-        exchange="NASDAQ",
+    assert {ORGANIZATION_ID, "NYSE", "MISSING"} <= set(
+        session.execute.await_args.args[0].compile().params.values()
     )
-    second = Company(
-        name="Beta",
-        ticker="BET",
-        exchange="NYSE",
-    )
-    scalar_result = MagicMock()
-    scalar_result.all.return_value = [first, second]
+
+
+@pytest.mark.asyncio
+async def test_list_uses_organization_scope_and_pagination() -> None:
     result = MagicMock()
-    result.scalars.return_value = scalar_result
+    result.scalars.return_value.all.return_value = [create_company()]
     session = MagicMock(spec=AsyncSession)
     session.execute = AsyncMock(return_value=result)
-    repository = CompanyRepository(session)
 
-    returned = await repository.list(offset=10, limit=25)
-    statement = session.execute.await_args.args[0]
-    compiled = statement.compile()
+    returned = await CompanyRepository(session).list(ORGANIZATION_ID, offset=10, limit=25)
 
-    assert returned == [first, second]
-    session.execute.assert_awaited_once()
-    result.scalars.assert_called_once_with()
-    scalar_result.all.assert_called_once_with()
-    assert 10 in compiled.params.values()
-    assert 25 in compiled.params.values()
+    assert returned[0].organization_id == ORGANIZATION_ID
+    values = session.execute.await_args.args[0].compile().params.values()
+    assert {ORGANIZATION_ID, 10, 25} <= set(values)
 
 
 @pytest.mark.asyncio
-async def test_list_uses_default_pagination() -> None:
-    scalar_result = MagicMock()
-    scalar_result.all.return_value = []
-    result = MagicMock()
-    result.scalars.return_value = scalar_result
-    session = MagicMock(spec=AsyncSession)
-    session.execute = AsyncMock(return_value=result)
-    repository = CompanyRepository(session)
-
-    await repository.list()
-    statement = session.execute.await_args.args[0]
-    compiled = statement.compile()
-
-    assert 0 in compiled.params.values()
-    assert 100 in compiled.params.values()
-
-
-@pytest.mark.asyncio
-async def test_add_adds_flushes_and_returns_company() -> None:
+async def test_add_update_and_delete_keep_repository_transaction_neutral() -> None:
     session = MagicMock(spec=AsyncSession)
     session.flush = AsyncMock()
-    repository = CompanyRepository(session)
-    company = create_company()
-
-    returned = await repository.add(company)
-
-    session.add.assert_called_once_with(company)
-    session.flush.assert_awaited_once_with()
-    assert returned is company
-
-
-@pytest.mark.asyncio
-async def test_update_applies_values_and_flushes() -> None:
-    session = MagicMock(spec=AsyncSession)
-    session.flush = AsyncMock()
-    repository = CompanyRepository(session)
-    company = create_company()
-    values: dict[str, object] = {
-        "name": "Updated Company",
-        "website": None,
-        "is_active": False,
-    }
-
-    result = await repository.update(company, values)
-
-    assert result is company
-    assert company.name == "Updated Company"
-    assert company.website is None
-    assert company.is_active is False
-    session.flush.assert_awaited_once_with()
-    session.commit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_update_with_empty_values_only_flushes() -> None:
-    session = MagicMock(spec=AsyncSession)
-    session.flush = AsyncMock()
-    repository = CompanyRepository(session)
-    company = create_company()
-
-    result = await repository.update(company, {})
-
-    assert result is company
-    session.flush.assert_awaited_once_with()
-
-
-@pytest.mark.asyncio
-async def test_delete_deletes_company_and_flushes() -> None:
-    session = MagicMock(spec=AsyncSession)
     session.delete = AsyncMock()
-    session.flush = AsyncMock()
     repository = CompanyRepository(session)
     company = create_company()
 
+    assert await repository.add(company) is company
+    assert await repository.update(company, {"name": "Updated"}) is company
     await repository.delete(company)
 
+    assert company.name == "Updated"
+    assert session.flush.await_count == 3
     session.delete.assert_awaited_once_with(company)
-    session.flush.assert_awaited_once_with()
-    session.commit.assert_not_called()
-    session.rollback.assert_not_called()

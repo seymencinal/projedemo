@@ -226,10 +226,16 @@ def test_migration_columns_match_company_metadata() -> None:
         item for item in create_table.call_args.args[1:] if isinstance(item, sa.Column)
     ]
 
-    assert [column.name for column in migration_columns] == list(Company.__table__.columns.keys())
+    model_columns = [
+        column for column in Company.__table__.columns if column.name != "organization_id"
+    ]
+
+    assert [column.name for column in migration_columns] == [
+        column.name for column in model_columns
+    ]
     for migration_column, model_column in zip(
         migration_columns,
-        Company.__table__.columns,
+        model_columns,
         strict=True,
     ):
         assert migration_column.nullable is model_column.nullable

@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.dependencies.company import CompanyServiceDependency
+from app.api.dependencies.tenant import TemporaryOrganizationId
 from app.schemas.company import CompanyCreate, CompanyRead, CompanyUpdate
 
 router = APIRouter(
@@ -19,8 +20,9 @@ router = APIRouter(
 async def create_company(
     payload: CompanyCreate,
     service: CompanyServiceDependency,
+    organization_id: TemporaryOrganizationId,
 ) -> CompanyRead:
-    company = await service.create(payload)
+    company = await service.create(organization_id, payload)
 
     return CompanyRead.model_validate(company)
 
@@ -31,10 +33,12 @@ async def create_company(
 )
 async def list_companies(
     service: CompanyServiceDependency,
+    organization_id: TemporaryOrganizationId,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> list[CompanyRead]:
     companies = await service.list(
+        organization_id,
         offset=offset,
         limit=limit,
     )
@@ -49,8 +53,9 @@ async def list_companies(
 async def get_company(
     company_id: UUID,
     service: CompanyServiceDependency,
+    organization_id: TemporaryOrganizationId,
 ) -> CompanyRead:
-    company = await service.get_by_id(company_id)
+    company = await service.get_by_id(company_id, organization_id)
 
     return CompanyRead.model_validate(company)
 
@@ -63,9 +68,11 @@ async def update_company(
     company_id: UUID,
     payload: CompanyUpdate,
     service: CompanyServiceDependency,
+    organization_id: TemporaryOrganizationId,
 ) -> CompanyRead:
     company = await service.update(
         company_id,
+        organization_id,
         payload,
     )
 
@@ -79,8 +86,9 @@ async def update_company(
 async def delete_company(
     company_id: UUID,
     service: CompanyServiceDependency,
+    organization_id: TemporaryOrganizationId,
 ) -> Response:
-    await service.delete(company_id)
+    await service.delete(company_id, organization_id)
 
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,

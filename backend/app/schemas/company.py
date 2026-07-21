@@ -65,6 +65,7 @@ class CompanyUpdate(BaseModel):
 
 class CompanyRead(CompanyBase):
     id: UUID
+    organization_id: UUID
     created_at: datetime
     updated_at: datetime
 

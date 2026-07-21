@@ -96,3 +96,9 @@ def test_get_database_resources_returns_none_before_lifespan_startup() -> None:
     request.app.state = SimpleNamespace()
 
     assert get_database_resources(request) is None
+
+
+@pytest.mark.asyncio
+async def test_get_db_session_rejects_requests_before_database_startup() -> None:
+    with pytest.raises(RuntimeError, match="Database resources are not initialized"):
+        await anext(get_db_session(create_request(None)))
