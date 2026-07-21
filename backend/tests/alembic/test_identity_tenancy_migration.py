@@ -4,6 +4,7 @@ from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
@@ -46,7 +47,7 @@ def test_upgrade_creates_identity_tables_and_backfills_existing_companies() -> N
         patch.object(module.op, "drop_constraint"),
         patch.object(module.op, "create_unique_constraint") as create_unique_constraint,
         patch.object(module.op, "create_index") as create_index,
-        patch.object(sa.Enum, "create"),
+        patch.object(postgresql.ENUM, "create"),
     ):
         module.upgrade()
 
@@ -73,3 +74,10 @@ def test_upgrade_creates_identity_tables_and_backfills_existing_companies() -> N
     statements = [str(call.args[0]) for call in execute.call_args_list]
     assert any("INSERT INTO organizations" in statement for statement in statements)
     assert any("UPDATE companies SET organization_id" in statement for statement in statements)
+    membership_role_column = next(
+        column
+        for column in create_table.call_args_list[2].args
+        if isinstance(column, sa.Column) and column.name == "role"
+    )
+    assert isinstance(membership_role_column.type, postgresql.ENUM)
+    assert membership_role_column.type.create_type is False

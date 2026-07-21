@@ -50,6 +50,17 @@ async def test_companies_table_exists(
 
 
 @pytest.mark.asyncio
+async def test_migration_creates_membership_role_enum_on_empty_test_database(
+    integration_session: AsyncSession,
+) -> None:
+    result = await integration_session.execute(
+        text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'membership_role')"),
+    )
+
+    assert result.scalar_one() is True
+
+
+@pytest.mark.asyncio
 async def test_add_persists_company(
     integration_session: AsyncSession,
 ) -> None:

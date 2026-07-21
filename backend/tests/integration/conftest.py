@@ -65,16 +65,19 @@ def test_database_settings(url: URL) -> Iterator[None]:
 
 
 @pytest.fixture(scope="session")
-def migrated_test_database() -> str:
+def migrated_test_database() -> Iterator[str]:
     database_url = get_test_database_url()
     url = make_url(database_url)
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
     with test_database_settings(url):
-        command.upgrade(config, "head")
-
-    return database_url
+        command.downgrade(config, "base")
+        try:
+            command.upgrade(config, "head")
+            yield database_url
+        finally:
+            command.downgrade(config, "base")
 
 
 @pytest_asyncio.fixture

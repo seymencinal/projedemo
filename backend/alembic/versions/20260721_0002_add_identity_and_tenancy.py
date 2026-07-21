@@ -8,6 +8,7 @@ Create Date: 2026-07-21 00:00:01
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -21,7 +22,14 @@ BOOTSTRAP_ORGANIZATION_SLUG = "legacy-bootstrap"
 
 
 def upgrade() -> None:
-    membership_role = sa.Enum("owner", "admin", "member", "viewer", name="membership_role")
+    membership_role = postgresql.ENUM(
+        "owner",
+        "admin",
+        "member",
+        "viewer",
+        name="membership_role",
+        create_type=False,
+    )
     membership_role.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
