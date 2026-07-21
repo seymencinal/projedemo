@@ -1,10 +1,15 @@
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.api.dependencies.database import get_database_resources
+from app.api.routes.general import router as general_router
+from app.db.session import DatabaseResources
 from app.models.company import Company
 from app.repositories.company import CompanyRepository
 
@@ -232,3 +237,26 @@ async def test_integration_test_runs_inside_transaction(
     integration_connection: AsyncConnection,
 ) -> None:
     assert integration_connection.in_transaction()
+
+
+@pytest.mark.asyncio
+async def test_readiness_checks_postgresql_connectivity(
+    integration_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(bind=integration_engine)
+    database = DatabaseResources(
+        engine=integration_engine,
+        session_factory=session_factory,
+    )
+    app = FastAPI()
+    app.include_router(general_router)
+    app.dependency_overrides[get_database_resources] = lambda: database
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}

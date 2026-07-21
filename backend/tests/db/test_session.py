@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -5,7 +6,9 @@ from app.core.config import Settings
 from app.db.session import (
     build_database_url,
     create_database_engine,
+    create_database_resources,
     create_session_factory,
+    dispose_database_resources,
 )
 
 
@@ -78,3 +81,17 @@ def test_engine_url_masks_database_password() -> None:
 
     assert password not in str(engine.url)
     assert password not in repr(engine.url)
+
+
+@pytest.mark.asyncio
+async def test_database_resources_create_and_dispose_engine() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    resources = create_database_resources(settings)
+    session = resources.session_factory()
+
+    assert isinstance(resources.engine, AsyncEngine)
+    assert session.bind is resources.engine
+
+    await session.close()
+    await dispose_database_resources(resources)

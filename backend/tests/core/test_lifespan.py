@@ -1,9 +1,12 @@
 import logging
+from collections.abc import Iterator
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from app.core.config import get_settings
 from app.core.lifespan import lifespan
 
 
@@ -33,3 +36,25 @@ def test_lifespan_logs_startup_and_shutdown(
     assert startup_record.__dict__["app_version"] == "9.9.9"
     assert shutdown_record.__dict__["app_name"] == "Test API"
     assert shutdown_record.__dict__["app_version"] == "9.9.9"
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache() -> Iterator[None]:
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_lifespan_rejects_production_without_database_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("DATABASE_USER", raising=False)
+    monkeypatch.delenv("DATABASE_PASSWORD", raising=False)
+    app = FastAPI(lifespan=lifespan)
+
+    with (
+        pytest.raises(ValidationError, match="Database credentials must be configured"),
+        TestClient(app),
+    ):
+        pass

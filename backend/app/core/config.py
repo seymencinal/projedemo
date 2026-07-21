@@ -1,7 +1,8 @@
 from enum import StrEnum
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,9 +30,27 @@ class Settings(BaseSettings):
     database_host: str = Field(default="localhost", min_length=1, pattern=r".*\S.*")
     database_port: int = Field(default=5432, ge=1, le=65535)
     database_name: str = Field(default="market_intelligence", min_length=1, pattern=r".*\S.*")
-    database_user: str = Field(default="postgres", min_length=1, pattern=r".*\S.*")
-    database_password: SecretStr = SecretStr("postgres")
+    database_user: str | None = Field(default=None, min_length=1, pattern=r".*\S.*")
+    database_password: SecretStr | None = None
     database_echo: bool = False
+    database_pool_size: int = Field(default=5, ge=1)
+    database_max_overflow: int = Field(default=10, ge=0)
+    database_pool_timeout: int = Field(default=30, ge=1)
+    database_pool_recycle: int = Field(default=1800, ge=-1)
+
+    @model_validator(mode="after")
+    def validate_database_credentials(self) -> Self:
+        if self.environment in {Environment.LOCAL, Environment.TEST}:
+            if self.database_user is None:
+                self.database_user = "postgres"
+            if self.database_password is None:
+                self.database_password = SecretStr("postgres")
+            return self
+
+        if self.database_user is None or self.database_password is None:
+            raise ValueError("Database credentials must be configured outside local and test.")
+
+        return self
 
 
 @lru_cache

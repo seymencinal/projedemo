@@ -25,8 +25,13 @@ def test_settings_defaults() -> None:
     assert settings.database_port == 5432
     assert settings.database_name == "market_intelligence"
     assert settings.database_user == "postgres"
+    assert settings.database_password is not None
     assert settings.database_password.get_secret_value() == "postgres"
     assert settings.database_echo is False
+    assert settings.database_pool_size == 5
+    assert settings.database_max_overflow == 10
+    assert settings.database_pool_timeout == 30
+    assert settings.database_pool_recycle == 1800
 
 
 def test_settings_accept_explicit_values() -> None:
@@ -42,6 +47,10 @@ def test_settings_accept_explicit_values() -> None:
         database_user="market_user",
         database_password="strong-password",  # type: ignore[arg-type]  # noqa: S106
         database_echo=True,
+        database_pool_size=8,
+        database_max_overflow=12,
+        database_pool_timeout=45,
+        database_pool_recycle=900,
         _env_file=None,
     )
 
@@ -54,8 +63,13 @@ def test_settings_accept_explicit_values() -> None:
     assert settings.database_port == 6432
     assert settings.database_name == "market_test"
     assert settings.database_user == "market_user"
+    assert settings.database_password is not None
     assert settings.database_password.get_secret_value() == "strong-password"
     assert settings.database_echo is True
+    assert settings.database_pool_size == 8
+    assert settings.database_max_overflow == 12
+    assert settings.database_pool_timeout == 45
+    assert settings.database_pool_recycle == 900
 
 
 def test_settings_reads_environment_variables(
@@ -72,6 +86,10 @@ def test_settings_reads_environment_variables(
     monkeypatch.setenv("DATABASE_USER", "environment_user")
     monkeypatch.setenv("DATABASE_PASSWORD", "environment-password")
     monkeypatch.setenv("DATABASE_ECHO", "true")
+    monkeypatch.setenv("DATABASE_POOL_SIZE", "7")
+    monkeypatch.setenv("DATABASE_MAX_OVERFLOW", "11")
+    monkeypatch.setenv("DATABASE_POOL_TIMEOUT", "40")
+    monkeypatch.setenv("DATABASE_POOL_RECYCLE", "1200")
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
@@ -84,8 +102,13 @@ def test_settings_reads_environment_variables(
     assert settings.database_port == 6433
     assert settings.database_name == "environment_market"
     assert settings.database_user == "environment_user"
+    assert settings.database_password is not None
     assert settings.database_password.get_secret_value() == "environment-password"
     assert settings.database_echo is True
+    assert settings.database_pool_size == 7
+    assert settings.database_max_overflow == 11
+    assert settings.database_pool_timeout == 40
+    assert settings.database_pool_recycle == 1200
 
 
 @pytest.mark.parametrize("app_name", ["", " ", "   "])
@@ -114,6 +137,10 @@ def test_get_settings_returns_cached_instance(
     monkeypatch.delenv("DATABASE_USER", raising=False)
     monkeypatch.delenv("DATABASE_PASSWORD", raising=False)
     monkeypatch.delenv("DATABASE_ECHO", raising=False)
+    monkeypatch.delenv("DATABASE_POOL_SIZE", raising=False)
+    monkeypatch.delenv("DATABASE_MAX_OVERFLOW", raising=False)
+    monkeypatch.delenv("DATABASE_POOL_TIMEOUT", raising=False)
+    monkeypatch.delenv("DATABASE_POOL_RECYCLE", raising=False)
 
     first = get_settings()
     second = get_settings()
@@ -155,6 +182,49 @@ def test_database_password_is_masked() -> None:
         _env_file=None,
     )
 
+    assert settings.database_password is not None
     assert settings.database_password.get_secret_value() == "super-secret-password"
     assert "super-secret-password" not in repr(settings)
     assert "super-secret-password" not in str(settings.model_dump())
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [Environment.STAGING, Environment.PRODUCTION],
+)
+def test_settings_require_database_credentials_outside_local_and_test(
+    environment: Environment,
+) -> None:
+    with pytest.raises(ValidationError, match="Database credentials must be configured"):
+        Settings(
+            environment=environment,
+            _env_file=None,
+        )  # type: ignore[call-arg]
+
+
+def test_settings_allow_local_defaults_for_database_credentials() -> None:
+    settings = Settings(
+        environment=Environment.LOCAL,
+        _env_file=None,
+    )  # type: ignore[call-arg]
+
+    assert settings.database_user == "postgres"
+    assert settings.database_password is not None
+    assert settings.database_password.get_secret_value() == "postgres"
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("database_pool_size", 0),
+        ("database_max_overflow", -1),
+        ("database_pool_timeout", 0),
+        ("database_pool_recycle", -2),
+    ],
+)
+def test_settings_reject_invalid_database_pool_values(
+    field_name: str,
+    field_value: int,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({field_name: field_value})
