@@ -5,12 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, Response, UploadFile, status
 
 from app.api.dependencies.research import (
+    CsvProcessingServiceDependency,
     DatasourceServiceDependency,
     FileStorageDependency,
     ImportJobServiceDependency,
     UploadedFileServiceDependency,
 )
 from app.api.dependencies.tenant import TemporaryOrganizationId
+from app.schemas.csv_processing import CsvSummaryRead
 from app.schemas.datasource import DatasourceRead, DatasourceUpdate
 from app.schemas.import_job import ImportJobCreate, ImportJobRead, ImportJobTransition
 from app.schemas.uploaded_file import UploadedFileCreate, UploadedFileRead
@@ -104,6 +106,19 @@ async def upload_file(
         return UploadedFileRead.model_validate(item)
     finally:
         await file.close()
+
+
+@router.post(
+    "/datasources/{datasource_id}/files/{uploaded_file_id}/csv-summary",
+    response_model=CsvSummaryRead,
+)
+async def summarize_csv(
+    datasource_id: UUID,
+    uploaded_file_id: UUID,
+    service: CsvProcessingServiceDependency,
+    organization_id: TemporaryOrganizationId,
+) -> CsvSummaryRead:
+    return await service.summarize(organization_id, datasource_id, uploaded_file_id)
 
 
 @router.get("/datasources/{datasource_id}/import-jobs", response_model=list[ImportJobRead])

@@ -5,6 +5,14 @@ from app.exceptions.company import (
     CompanyAlreadyExistsError,
     CompanyNotFoundError,
 )
+from app.exceptions.csv_processing import (
+    CsvColumnLimitExceededError,
+    CsvFileNotProcessableError,
+    CsvRowLimitExceededError,
+    EmptyCsvFileError,
+    MalformedCsvError,
+    UnsupportedCsvFileError,
+)
 from app.exceptions.organization import OrganizationAlreadyExistsError, OrganizationNotFoundError
 from app.exceptions.research import (
     DatasourceNotFoundError,
@@ -111,6 +119,18 @@ async def storage_exception_handler(request: Request, error: Exception) -> JSONR
     return JSONResponse(status_code=codes[type(error)], content={"detail": "Upload failed."})
 
 
+async def csv_processing_exception_handler(request: Request, error: Exception) -> JSONResponse:
+    del request
+    status_code = (
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        if isinstance(error, UnsupportedCsvFileError)
+        else status.HTTP_409_CONFLICT
+        if isinstance(error, CsvFileNotProcessableError)
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
+    return JSONResponse(status_code=status_code, content={"detail": "CSV processing failed."})
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         CompanyNotFoundError,
@@ -141,7 +161,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         InvalidUploadedFileTransitionError, import_job_conflict_exception_handler
     )
     app.add_exception_handler(InvalidImportJobCountersError, import_job_counter_exception_handler)
-    for error_type in (
+    for storage_error_type in (
         UnsupportedFileExtensionError,
         UnsupportedContentTypeError,
         ContentTypeMismatchError,
@@ -151,4 +171,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         StorageWriteError,
         StoredFileNotFoundError,
     ):
-        app.add_exception_handler(error_type, storage_exception_handler)
+        app.add_exception_handler(storage_error_type, storage_exception_handler)
+    for csv_error_type in (
+        UnsupportedCsvFileError,
+        EmptyCsvFileError,
+        MalformedCsvError,
+        CsvRowLimitExceededError,
+        CsvColumnLimitExceededError,
+        CsvFileNotProcessableError,
+    ):
+        app.add_exception_handler(csv_error_type, csv_processing_exception_handler)

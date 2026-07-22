@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     database_pool_recycle: int = Field(default=1800, ge=-1)
     upload_storage_root: Path = Path("storage/uploads")
     max_upload_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
+    max_csv_rows: int = Field(default=100000, ge=1)
+    max_csv_columns: int = Field(default=200, ge=1)
 
     @model_validator(mode="after")
     def validate_database_credentials(self) -> Self:

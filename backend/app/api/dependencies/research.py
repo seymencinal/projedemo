@@ -5,6 +5,7 @@ from fastapi import Depends
 from app.api.dependencies.company import DatabaseSession
 from app.core.config import get_settings
 from app.repositories.uploaded_file import UploadedFileRepository
+from app.services.csv_processing import CsvProcessingService
 from app.services.datasource import DatasourceService
 from app.services.import_job import ImportJobService
 from app.services.research import ResearchService
@@ -38,6 +39,19 @@ def get_uploaded_file_service(session: DatabaseSession) -> UploadedFileService:
     return UploadedFileService(session)
 
 
+def get_csv_processing_service(
+    repository: Annotated[UploadedFileRepository, Depends(get_uploaded_file_repository)],
+    storage: Annotated[FileStorage, Depends(get_file_storage)],
+) -> CsvProcessingService:
+    settings = get_settings()
+    return CsvProcessingService(
+        repository,
+        storage,
+        settings.max_csv_rows,
+        settings.max_csv_columns,
+    )
+
+
 ResearchServiceDependency = Annotated[ResearchService, Depends(get_research_service)]
 DatasourceServiceDependency = Annotated[DatasourceService, Depends(get_datasource_service)]
 ImportJobServiceDependency = Annotated[ImportJobService, Depends(get_import_job_service)]
@@ -46,3 +60,6 @@ UploadedFileRepositoryDependency = Annotated[
     UploadedFileRepository, Depends(get_uploaded_file_repository)
 ]
 UploadedFileServiceDependency = Annotated[UploadedFileService, Depends(get_uploaded_file_service)]
+CsvProcessingServiceDependency = Annotated[
+    CsvProcessingService, Depends(get_csv_processing_service)
+]
