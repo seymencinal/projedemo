@@ -19,7 +19,12 @@ class Research(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (Index("ix_researches_organization_id", "organization_id"),)
 
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(
+            "organizations.id",
+            name="fk_researches_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

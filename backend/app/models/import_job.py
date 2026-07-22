@@ -55,10 +55,20 @@ class ImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_import_jobs_organization_id_datasource_id", "organization_id", "datasource_id"),
     )
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(
+            "organizations.id",
+            name="fk_import_jobs_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
     )
     research_id: Mapped[UUID] = mapped_column(
-        ForeignKey("researches.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(
+            "researches.id",
+            name="fk_import_jobs_research_id_researches",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
     )
     datasource_id: Mapped[UUID] = mapped_column(nullable=False)
     status: Mapped[ImportJobStatus] = mapped_column(

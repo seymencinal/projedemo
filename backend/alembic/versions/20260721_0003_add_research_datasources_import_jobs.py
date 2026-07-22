@@ -47,7 +47,12 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["organization_id"],
+            ["organizations.id"],
+            name="fk_researches_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_researches_organization_id", "researches", ["organization_id"])
@@ -66,8 +71,18 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["research_id"], ["researches.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["organization_id"],
+            ["organizations.id"],
+            name="fk_datasources_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["research_id"],
+            ["researches.id"],
+            name="fk_datasources_research_id_researches",
+            ondelete="CASCADE",
+        ),
         sa.UniqueConstraint(
             "id",
             "organization_id",
@@ -98,18 +113,33 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["research_id"], ["researches.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["organization_id"],
+            ["organizations.id"],
+            name="fk_import_jobs_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["research_id"],
+            ["researches.id"],
+            name="fk_import_jobs_research_id_researches",
+            ondelete="CASCADE",
+        ),
         sa.ForeignKeyConstraint(
             ["datasource_id", "organization_id", "research_id"],
             ["datasources.id", "datasources.organization_id", "datasources.research_id"],
             ondelete="CASCADE",
             name="fk_import_jobs_datasource_id_organization_id_research_id_datasources",
         ),
-        sa.CheckConstraint("total_items >= 0"),
-        sa.CheckConstraint("processed_items >= 0"),
-        sa.CheckConstraint("failed_items >= 0"),
-        sa.CheckConstraint("processed_items + failed_items <= total_items"),
+        sa.CheckConstraint("total_items >= 0", name="ck_import_jobs_total_items_non_negative"),
+        sa.CheckConstraint(
+            "processed_items >= 0", name="ck_import_jobs_processed_items_non_negative"
+        ),
+        sa.CheckConstraint("failed_items >= 0", name="ck_import_jobs_failed_items_non_negative"),
+        sa.CheckConstraint(
+            "processed_items + failed_items <= total_items",
+            name="ck_import_jobs_item_counts_within_total",
+        ),
         sa.UniqueConstraint(
             "organization_id",
             "datasource_id",

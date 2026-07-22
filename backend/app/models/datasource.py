@@ -38,10 +38,20 @@ class Datasource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+        ForeignKey(
+            "organizations.id",
+            name="fk_datasources_organization_id_organizations",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
     )
     research_id: Mapped[UUID] = mapped_column(
-        ForeignKey("researches.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(
+            "researches.id",
+            name="fk_datasources_research_id_researches",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[DatasourceType] = mapped_column(
