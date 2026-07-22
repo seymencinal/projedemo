@@ -12,8 +12,11 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.db.base import NAMING_CONVENTION, Base, metadata
 from app.models.company import Company
+from app.models.datasource import Datasource
+from app.models.import_job import ImportJob
 from app.models.membership import Membership
 from app.models.organization import Organization
+from app.models.research import Research
 from app.models.user import User
 
 
@@ -81,8 +84,19 @@ def test_naming_convention_generates_constraint_names() -> None:
 
 
 def test_base_metadata_contains_expected_application_tables() -> None:
-    assert set(Base.metadata.tables) == {"companies", "memberships", "organizations", "users"}
+    assert set(Base.metadata.tables) == {
+        "companies",
+        "datasources",
+        "import_jobs",
+        "memberships",
+        "organizations",
+        "researches",
+        "users",
+    }
     assert Base.metadata.tables["companies"] is Company.__table__
     assert Base.metadata.tables["organizations"] is Organization.__table__
     assert Base.metadata.tables["users"] is User.__table__
     assert Base.metadata.tables["memberships"] is Membership.__table__
+    assert Base.metadata.tables["researches"] is Research.__table__
+    assert Base.metadata.tables["datasources"] is Datasource.__table__
+    assert Base.metadata.tables["import_jobs"] is ImportJob.__table__

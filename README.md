@@ -51,3 +51,32 @@ enum, and `companies.organization_id`. Existing company rows are retained and as
 deterministic `legacy-bootstrap` organization (`00000000-0000-0000-0000-000000000001`) before
 the ownership column becomes non-nullable. New company uniqueness is scoped to organization,
 exchange, and ticker.
+
+## Research, Datasource, and Import Job foundation
+
+`Research` is a tenant-owned analysis workspace (`draft`, `active`, or `archived`). Its API is
+`POST/GET /researches`, `GET/PATCH/DELETE /researches/{research_id}`. A `Datasource` belongs to
+both an organization and a research, preserves object-shaped JSON configuration, and has source
+types `csv`, `excel`, `url`, and `manual`; its endpoints are `POST/GET
+/researches/{research_id}/datasources` and `GET/PATCH/DELETE /datasources/{datasource_id}`.
+
+An `Import Job` belongs to one organization, research, and datasource. Its endpoints are
+`POST/GET /datasources/{datasource_id}/import-jobs`, `GET /import-jobs/{import_job_id}`, and
+`PATCH /import-jobs/{import_job_id}/status`. Its permitted lifecycle transitions are:
+
+- `pending` → `running` or `cancelled`
+- `running` → `completed`, `failed`, or `cancelled`
+
+Moving to `running` sets `started_at`. Any terminal state sets `completed_at`; cancellation from
+pending leaves `started_at` empty, while cancellation from running preserves it. Completion clears
+the error message; failure requires a non-empty error message.
+
+Counters are non-negative, cannot decrease, and `processed_items + failed_items` cannot exceed
+`total_items`; completion additionally requires that sum to equal `total_items`. Idempotency is
+scoped to `organization_id + datasource_id + idempotency_key`, so the same key is allowed for a
+different datasource. PostgreSQL enforces the datasource composite relationship
+`(datasource_id, organization_id, research_id)` and rejects inconsistent tenant/research links.
+
+All queries are organization-scoped. `X-Organization-ID` remains a development-only tenant context
+mechanism and is not authentication or a security boundary. File upload, CSV/Excel parsing, URL
+crawling, workers, Redis, Celery, AI, and background ingestion execution are not implemented yet.
