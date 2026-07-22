@@ -27,6 +27,7 @@ class DatasourceStatus(StrEnum):
 class Datasource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "datasources"
     __table_args__ = (
+        UniqueConstraint("id", "organization_id", name="uq_datasources_id_organization_id"),
         UniqueConstraint(
             "id",
             "organization_id",

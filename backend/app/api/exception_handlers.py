@@ -14,6 +14,21 @@ from app.exceptions.research import (
     InvalidImportJobTransitionError,
     ResearchNotFoundError,
 )
+from app.exceptions.storage import (
+    ContentTypeMismatchError,
+    EmptyUploadError,
+    StorageWriteError,
+    StoredFileNotFoundError,
+    UnsafeStoragePathError,
+    UnsupportedContentTypeError,
+    UnsupportedFileExtensionError,
+    UploadTooLargeError,
+)
+from app.exceptions.uploaded_file import (
+    InvalidUploadedFileTransitionError,
+    UploadedFileConflictError,
+    UploadedFileNotFoundError,
+)
 
 
 async def company_not_found_exception_handler(
@@ -81,6 +96,21 @@ async def import_job_counter_exception_handler(request: Request, error: Exceptio
     )
 
 
+async def storage_exception_handler(request: Request, error: Exception) -> JSONResponse:
+    del request
+    codes = {
+        UnsupportedFileExtensionError: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        UnsupportedContentTypeError: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        ContentTypeMismatchError: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        EmptyUploadError: status.HTTP_422_UNPROCESSABLE_CONTENT,
+        UploadTooLargeError: status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        UnsafeStoragePathError: status.HTTP_400_BAD_REQUEST,
+        StorageWriteError: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        StoredFileNotFoundError: status.HTTP_404_NOT_FOUND,
+    }
+    return JSONResponse(status_code=codes[type(error)], content={"detail": "Upload failed."})
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         CompanyNotFoundError,
@@ -101,8 +131,24 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ResearchNotFoundError, research_not_found_exception_handler)
     app.add_exception_handler(DatasourceNotFoundError, research_not_found_exception_handler)
     app.add_exception_handler(ImportJobNotFoundError, research_not_found_exception_handler)
+    app.add_exception_handler(UploadedFileNotFoundError, research_not_found_exception_handler)
     app.add_exception_handler(
         InvalidImportJobTransitionError, import_job_conflict_exception_handler
     )
     app.add_exception_handler(IdempotencyConflictError, import_job_conflict_exception_handler)
+    app.add_exception_handler(UploadedFileConflictError, import_job_conflict_exception_handler)
+    app.add_exception_handler(
+        InvalidUploadedFileTransitionError, import_job_conflict_exception_handler
+    )
     app.add_exception_handler(InvalidImportJobCountersError, import_job_counter_exception_handler)
+    for error_type in (
+        UnsupportedFileExtensionError,
+        UnsupportedContentTypeError,
+        ContentTypeMismatchError,
+        EmptyUploadError,
+        UploadTooLargeError,
+        UnsafeStoragePathError,
+        StorageWriteError,
+        StoredFileNotFoundError,
+    ):
+        app.add_exception_handler(error_type, storage_exception_handler)

@@ -17,6 +17,7 @@ from app.models.import_job import ImportJob
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.research import Research
+from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 
 
@@ -91,6 +92,7 @@ def test_base_metadata_contains_expected_application_tables() -> None:
         "memberships",
         "organizations",
         "researches",
+        "uploaded_files",
         "users",
     }
     assert Base.metadata.tables["companies"] is Company.__table__
@@ -100,3 +102,4 @@ def test_base_metadata_contains_expected_application_tables() -> None:
     assert Base.metadata.tables["researches"] is Research.__table__
     assert Base.metadata.tables["datasources"] is Datasource.__table__
     assert Base.metadata.tables["import_jobs"] is ImportJob.__table__
+    assert Base.metadata.tables["uploaded_files"] is UploadedFile.__table__

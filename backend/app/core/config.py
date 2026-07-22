@@ -1,5 +1,6 @@
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Self
 
 from pydantic import Field, SecretStr, model_validator
@@ -37,6 +38,8 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=10, ge=0)
     database_pool_timeout: int = Field(default=30, ge=1)
     database_pool_recycle: int = Field(default=1800, ge=-1)
+    upload_storage_root: Path = Path("storage/uploads")
+    max_upload_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
 
     @model_validator(mode="after")
     def validate_database_credentials(self) -> Self:

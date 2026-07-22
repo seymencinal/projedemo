@@ -14,6 +14,7 @@ from app.models.import_job import ImportJob
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.research import Research
+from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 
 config = context.config
@@ -29,6 +30,7 @@ assert User.__table__ is Base.metadata.tables["users"]  # noqa: S101
 assert Research.__table__ is Base.metadata.tables["researches"]  # noqa: S101
 assert Datasource.__table__ is Base.metadata.tables["datasources"]  # noqa: S101
 assert ImportJob.__table__ is Base.metadata.tables["import_jobs"]  # noqa: S101
+assert UploadedFile.__table__ is Base.metadata.tables["uploaded_files"]  # noqa: S101
 
 target_metadata = Base.metadata
 
