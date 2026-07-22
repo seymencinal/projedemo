@@ -185,7 +185,7 @@ async def test_migration_catalog_contains_research_datasource_import_job_contrac
     )
     constraints = await integration_session.scalars(
         text(
-            "SELECT conname FROM pg_constraint WHERE conname IN ('fk_import_jobs_datasource_id_organization_id_research_id_datasources', 'uq_import_jobs_organization_id_datasource_id_idempotency_key', 'uq_datasources_id_organization_id_research_id')"
+            "SELECT conname FROM pg_constraint WHERE conname IN ('fk_import_jobs_datasource_scope', 'uq_import_jobs_organization_id_datasource_id_idempotency_key', 'uq_datasources_id_organization_id_research_id')"
         )
     )
 
@@ -197,7 +197,7 @@ async def test_migration_catalog_contains_research_datasource_import_job_contrac
         "import_job_status",
     }
     assert set(constraints) == {
-        "fk_import_jobs_datasource_id_organization_id_research_id_datasources",
+        "fk_import_jobs_datasource_scope",
         "uq_import_jobs_organization_id_datasource_id_idempotency_key",
         "uq_datasources_id_organization_id_research_id",
     }

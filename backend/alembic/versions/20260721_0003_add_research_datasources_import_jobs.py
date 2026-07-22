@@ -129,7 +129,7 @@ def upgrade() -> None:
             ["datasource_id", "organization_id", "research_id"],
             ["datasources.id", "datasources.organization_id", "datasources.research_id"],
             ondelete="CASCADE",
-            name="fk_import_jobs_datasource_id_organization_id_research_id_datasources",
+            name="fk_import_jobs_datasource_scope",
         ),
         sa.CheckConstraint("total_items >= 0", name="ck_import_jobs_total_items_non_negative"),
         sa.CheckConstraint(

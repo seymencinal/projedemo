@@ -40,7 +40,7 @@ class ImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             ["datasource_id", "organization_id", "research_id"],
             ["datasources.id", "datasources.organization_id", "datasources.research_id"],
             ondelete="CASCADE",
-            name="fk_import_jobs_datasource_id_organization_id_research_id_datasources",
+            name="fk_import_jobs_datasource_scope",
         ),
         CheckConstraint("total_items >= 0", name="total_items_non_negative"),
         CheckConstraint("processed_items >= 0", name="processed_items_non_negative"),
