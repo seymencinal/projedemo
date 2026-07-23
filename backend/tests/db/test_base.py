@@ -14,6 +14,7 @@ from app.db.base import NAMING_CONVENTION, Base, metadata
 from app.models.company import Company
 from app.models.datasource import Datasource
 from app.models.import_job import ImportJob
+from app.models.imported_record import ImportedRecord
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.research import Research
@@ -89,6 +90,7 @@ def test_base_metadata_contains_expected_application_tables() -> None:
         "companies",
         "datasources",
         "import_jobs",
+        "imported_records",
         "memberships",
         "organizations",
         "researches",
@@ -102,4 +104,5 @@ def test_base_metadata_contains_expected_application_tables() -> None:
     assert Base.metadata.tables["researches"] is Research.__table__
     assert Base.metadata.tables["datasources"] is Datasource.__table__
     assert Base.metadata.tables["import_jobs"] is ImportJob.__table__
+    assert Base.metadata.tables["imported_records"] is ImportedRecord.__table__
     assert Base.metadata.tables["uploaded_files"] is UploadedFile.__table__

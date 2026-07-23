@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Response, UploadFile, status
 
 from app.api.dependencies.research import (
+    CsvImportExecutionServiceDependency,
     CsvProcessingServiceDependency,
     DatasourceServiceDependency,
     FileStorageDependency,
@@ -123,6 +124,21 @@ async def prepare_csv_import(
     organization_id: TemporaryOrganizationId,
 ) -> CsvImportMappingAcceptedRead:
     return await service.prepare(datasource_id, uploaded_file_id, organization_id, payload)
+
+
+@router.post(
+    "/datasources/{datasource_id}/import-jobs/{import_job_id}/execute",
+    response_model=ImportJobRead,
+)
+async def execute_csv_import(
+    datasource_id: UUID,
+    import_job_id: UUID,
+    service: CsvImportExecutionServiceDependency,
+    organization_id: TemporaryOrganizationId,
+) -> ImportJobRead:
+    return ImportJobRead.model_validate(
+        await service.execute(import_job_id, organization_id, datasource_id)
+    )
 
 
 @router.post(

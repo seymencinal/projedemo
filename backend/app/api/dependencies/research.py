@@ -5,6 +5,7 @@ from fastapi import Depends
 from app.api.dependencies.company import DatabaseSession
 from app.core.config import get_settings
 from app.repositories.uploaded_file import UploadedFileRepository
+from app.services.csv_import_execution import CsvImportExecutionService
 from app.services.csv_processing import CsvProcessingService
 from app.services.datasource import DatasourceService
 from app.services.import_job import ImportJobService
@@ -34,6 +35,20 @@ def get_mapping_preparation_service(session: DatabaseSession) -> MappingPreparat
 def get_file_storage() -> FileStorage:
     settings = get_settings()
     return LocalFileStorage(settings.upload_storage_root, settings.max_upload_size_bytes)
+
+
+def get_csv_import_execution_service(
+    session: DatabaseSession,
+    storage: Annotated[FileStorage, Depends(get_file_storage)],
+) -> CsvImportExecutionService:
+    settings = get_settings()
+    return CsvImportExecutionService(
+        session,
+        storage,
+        settings.max_csv_rows,
+        settings.max_csv_columns,
+        settings.csv_import_batch_size,
+    )
 
 
 def get_uploaded_file_repository(session: DatabaseSession) -> UploadedFileRepository:
@@ -70,4 +85,7 @@ UploadedFileRepositoryDependency = Annotated[
 UploadedFileServiceDependency = Annotated[UploadedFileService, Depends(get_uploaded_file_service)]
 CsvProcessingServiceDependency = Annotated[
     CsvProcessingService, Depends(get_csv_processing_service)
+]
+CsvImportExecutionServiceDependency = Annotated[
+    CsvImportExecutionService, Depends(get_csv_import_execution_service)
 ]

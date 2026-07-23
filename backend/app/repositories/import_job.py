@@ -18,6 +18,20 @@ class ImportJobRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_for_execution(
+        self, job_id: UUID, organization_id: UUID, datasource_id: UUID
+    ) -> ImportJob | None:
+        result = await self._session.execute(
+            select(ImportJob)
+            .where(
+                ImportJob.id == job_id,
+                ImportJob.organization_id == organization_id,
+                ImportJob.datasource_id == datasource_id,
+            )
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_key(
         self,
         organization_id: UUID,

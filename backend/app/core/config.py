@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
     max_csv_rows: int = Field(default=100000, ge=1)
     max_csv_columns: int = Field(default=200, ge=1)
+    csv_import_batch_size: int = Field(default=500, ge=1, le=5000)
 
     @model_validator(mode="after")
     def validate_database_credentials(self) -> Self:

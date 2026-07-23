@@ -5,6 +5,15 @@ from app.exceptions.company import (
     CompanyAlreadyExistsError,
     CompanyNotFoundError,
 )
+from app.exceptions.csv_import_execution import (
+    BlankCsvHeaderError,
+    DuplicateCsvHeaderError,
+    ImportedRecordPersistenceError,
+    ImportJobNotExecutableError,
+    InvalidImportedRecordError,
+    InvalidImportJobConfigurationError,
+    MissingMappedColumnError,
+)
 from app.exceptions.csv_mapping import (
     BlankSourceColumnError,
     DuplicateSourceColumnError,
@@ -145,6 +154,20 @@ async def csv_mapping_exception_handler(request: Request, error: Exception) -> J
     )
 
 
+async def csv_import_execution_exception_handler(
+    request: Request, error: Exception
+) -> JSONResponse:
+    del request
+    status_code = (
+        status.HTTP_409_CONFLICT
+        if isinstance(error, (ImportJobNotExecutableError, InvalidImportJobConfigurationError))
+        else status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(error, ImportedRecordPersistenceError)
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
+    return JSONResponse(status_code=status_code, content={"detail": "CSV import execution failed."})
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         CompanyNotFoundError,
@@ -202,3 +225,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         BlankSourceColumnError,
     ):
         app.add_exception_handler(csv_mapping_error_type, csv_mapping_exception_handler)
+    for csv_import_execution_error_type in (
+        ImportJobNotExecutableError,
+        InvalidImportJobConfigurationError,
+        BlankCsvHeaderError,
+        DuplicateCsvHeaderError,
+        MissingMappedColumnError,
+        InvalidImportedRecordError,
+        ImportedRecordPersistenceError,
+    ):
+        app.add_exception_handler(
+            csv_import_execution_error_type, csv_import_execution_exception_handler
+        )
