@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.models.company import Company
 from app.models.datasource import Datasource
 from app.models.import_job import ImportJob
+from app.models.import_validation_issue import ImportValidationIssue
 from app.models.imported_record import ImportedRecord
 from app.models.membership import Membership
 from app.models.organization import Organization
@@ -32,6 +33,7 @@ assert Research.__table__ is Base.metadata.tables["researches"]  # noqa: S101
 assert Datasource.__table__ is Base.metadata.tables["datasources"]  # noqa: S101
 assert ImportJob.__table__ is Base.metadata.tables["import_jobs"]  # noqa: S101
 assert ImportedRecord.__table__ is Base.metadata.tables["imported_records"]  # noqa: S101
+assert ImportValidationIssue.__table__ is Base.metadata.tables["import_validation_issues"]  # noqa: S101
 assert UploadedFile.__table__ is Base.metadata.tables["uploaded_files"]  # noqa: S101
 
 target_metadata = Base.metadata

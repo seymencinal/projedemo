@@ -1,3 +1,8 @@
+from collections.abc import Sequence
+
+from app.services.import_row_validation import RowValidationIssue
+
+
 class ImportJobNotExecutableError(Exception):
     def __init__(self) -> None:
         super().__init__("CSV import job is not executable.")
@@ -24,8 +29,9 @@ class MissingMappedColumnError(Exception):
 
 
 class InvalidImportedRecordError(Exception):
-    def __init__(self) -> None:
+    def __init__(self, issues: Sequence[RowValidationIssue] = ()) -> None:
         super().__init__("CSV import contains an invalid record.")
+        self.issues = tuple(issues)
 
 
 class ImportedRecordPersistenceError(Exception):

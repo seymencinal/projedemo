@@ -29,6 +29,7 @@ from app.models.import_job import ImportJob, ImportJobStatus
 from app.models.uploaded_file import UploadedFile, UploadedFileStatus
 from app.repositories.datasource import DatasourceRepository
 from app.repositories.import_job import ImportJobRepository
+from app.repositories.import_validation_issue import ImportValidationIssueRepository
 from app.repositories.imported_record import ImportedRecordRepository
 from app.repositories.uploaded_file import UploadedFileRepository
 from app.services.csv_import_execution import CsvImportExecutionService
@@ -77,6 +78,7 @@ def create_file() -> UploadedFile:
 def create_service(
     content: bytes,
     storage: MagicMock | None = None,
+    issue_repository: MagicMock | None = None,
 ) -> tuple[CsvImportExecutionService, MagicMock, MagicMock, MagicMock, MagicMock, MagicMock]:
     session = MagicMock(spec=AsyncSession)
     session.commit = AsyncMock()
@@ -90,8 +92,22 @@ def create_service(
     files = MagicMock(spec=UploadedFileRepository)
     records = MagicMock(spec=ImportedRecordRepository)
     records.insert_batch = AsyncMock()
+    if issue_repository is None:
+        issue_repository = MagicMock(spec=ImportValidationIssueRepository)
+        issue_repository.insert_many = AsyncMock()
     return (
-        CsvImportExecutionService(session, storage, 100, 10, 2, jobs, datasources, files, records),
+        CsvImportExecutionService(
+            session,
+            storage,
+            100,
+            10,
+            2,
+            jobs,
+            datasources,
+            files,
+            records,
+            issue_repository,
+        ),
         session,
         jobs,
         datasources,
@@ -175,6 +191,119 @@ async def test_execute_rolls_back_flushed_batches_after_first_invalid_row() -> N
     assert session.rollback.await_count == 1
     assert job.status is ImportJobStatus.FAILED
     assert job.error_message == "CSV import execution failed."
+
+
+@pytest.mark.asyncio
+async def test_execute_persists_first_invalid_row_issues_with_failed_state() -> None:
+    issue_repository = MagicMock(spec=ImportValidationIssueRepository)
+    issue_repository.insert_many = AsyncMock()
+    service, session, jobs, datasources, files, records = create_service(
+        b"body,engagement,sentiment\n,-1,Positive\nlater,1,neutral\n",
+        issue_repository=issue_repository,
+    )
+    service._batch_size = 1
+    job = create_job()
+    job.configuration = {
+        "mapping": {
+            "content": "body",
+            "engagement_count": "engagement",
+            "sentiment": "sentiment",
+        }
+    }
+    jobs.get_for_execution = AsyncMock(side_effect=[job, job])
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    with pytest.raises(InvalidImportedRecordError) as error_info:
+        await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    assert [issue.canonical_field for issue in error_info.value.issues] == [
+        "content",
+        "engagement_count",
+        "sentiment",
+    ]
+    issue_repository.insert_many.assert_awaited_once_with(job.id, error_info.value.issues)
+    assert records.insert_batch.await_count == 0
+    assert job.status is ImportJobStatus.FAILED
+    assert session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_persists_row_width_issue_with_physical_line_number() -> None:
+    issue_repository = MagicMock(spec=ImportValidationIssueRepository)
+    issue_repository.insert_many = AsyncMock()
+    service, _, jobs, datasources, files, _ = create_service(
+        b"body,author\nvalue\n",
+        issue_repository=issue_repository,
+    )
+    job = create_job()
+    job.configuration = {"mapping": {"content": "body", "author": "author"}}
+    jobs.get_for_execution = AsyncMock(side_effect=[job, job])
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    with pytest.raises(InvalidImportedRecordError) as error_info:
+        await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    assert len(error_info.value.issues) == 1
+    issue = error_info.value.issues[0]
+    assert (issue.source_row_number, issue.canonical_field, issue.source_column) == (
+        2,
+        "row",
+        None,
+    )
+    assert issue.code == "row_width"
+    issue_repository.insert_many.assert_awaited_once_with(job.id, error_info.value.issues)
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_overwrite_cancelled_job_during_failure_handling() -> None:
+    issue_repository = MagicMock(spec=ImportValidationIssueRepository)
+    issue_repository.insert_many = AsyncMock()
+    service, session, jobs, datasources, files, _ = create_service(
+        b"body,author\nvalue\n",
+        issue_repository=issue_repository,
+    )
+    job = create_job()
+    job.configuration = {"mapping": {"content": "body", "author": "author"}}
+    cancelled_job = create_job()
+    cancelled_job.id = job.id
+    cancelled_job.status = ImportJobStatus.CANCELLED
+    jobs.get_for_execution = AsyncMock(side_effect=[job, cancelled_job])
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    with pytest.raises(InvalidImportedRecordError):
+        await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    assert cancelled_job.status is ImportJobStatus.CANCELLED
+    issue_repository.insert_many.assert_not_awaited()
+    assert session.commit.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_mask_validation_error_when_issue_persistence_fails() -> None:
+    issue_repository = MagicMock(spec=ImportValidationIssueRepository)
+    issue_repository.insert_many = AsyncMock(
+        side_effect=SQLAlchemyError("issue persistence failed")
+    )
+    service, session, jobs, datasources, files, _ = create_service(
+        b"body,author\n,writer\n",
+        issue_repository=issue_repository,
+    )
+    job = create_job()
+    job.configuration = {"mapping": {"content": "body"}}
+    jobs.get_for_execution = AsyncMock(side_effect=[job, job])
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    with pytest.raises(InvalidImportedRecordError) as error_info:
+        await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    assert error_info.value.issues[0].code == "required"
+    issue_repository.insert_many.assert_awaited_once()
+    assert session.rollback.await_count == 2
+    assert session.commit.await_count == 1
 
 
 @pytest.mark.asyncio

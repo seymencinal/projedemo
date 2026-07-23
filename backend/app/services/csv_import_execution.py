@@ -26,12 +26,18 @@ from app.exceptions.research import DatasourceNotFoundError, ImportJobNotFoundEr
 from app.models.import_job import ImportJob, ImportJobStatus
 from app.repositories.datasource import DatasourceRepository
 from app.repositories.import_job import ImportJobRepository
+from app.repositories.import_validation_issue import ImportValidationIssueRepository
 from app.repositories.imported_record import ImportedRecordRepository
 from app.repositories.uploaded_file import UploadedFileRepository
 from app.schemas.imported_record import ImportedRecordInsert
 from app.services.csv_file_access import CsvFileAccessService, CsvRowReader
 from app.services.csv_mapping_validation import validate_csv_mapping
-from app.services.import_row_validation import ImportRowValidator, SourceRow, ValidatedImportRecord
+from app.services.import_row_validation import (
+    ImportRowValidator,
+    RowValidationIssue,
+    SourceRow,
+    ValidatedImportRecord,
+)
 from app.storage.protocol import FileStorage
 
 
@@ -47,6 +53,7 @@ class CsvImportExecutionService:
         datasource_repository: DatasourceRepository | None = None,
         uploaded_file_repository: UploadedFileRepository | None = None,
         imported_record_repository: ImportedRecordRepository | None = None,
+        import_validation_issue_repository: ImportValidationIssueRepository | None = None,
     ) -> None:
         self._session = session
         self._max_rows = max_rows
@@ -56,6 +63,9 @@ class CsvImportExecutionService:
         self._datasources = datasource_repository or DatasourceRepository(session)
         self._files = uploaded_file_repository or UploadedFileRepository(session)
         self._records = imported_record_repository or ImportedRecordRepository(session)
+        self._issues = import_validation_issue_repository or ImportValidationIssueRepository(
+            session
+        )
         self._file_access = CsvFileAccessService(self._files, storage)
 
     async def execute(
@@ -108,10 +118,15 @@ class CsvImportExecutionService:
                 import_job_id, organization_id, datasource_id
             )
             raise ImportedRecordPersistenceError() from error
+        except InvalidImportedRecordError as error:
+            await self._session.rollback()
+            await self._mark_failed_without_masking_error(
+                import_job_id, organization_id, datasource_id, error.issues
+            )
+            raise
         except (
             csv.Error,
             UnicodeDecodeError,
-            InvalidImportedRecordError,
             MissingMappedColumnError,
             BlankCsvHeaderError,
             DuplicateCsvHeaderError,
@@ -147,7 +162,17 @@ class CsvImportExecutionService:
                 indexes = {column: index for index, column in enumerate(header)}
                 continue
             if len(record) != len(header):
-                raise InvalidImportedRecordError()
+                raise InvalidImportedRecordError(
+                    (
+                        RowValidationIssue(
+                            source_row_number=reader.line_num,
+                            canonical_field="row",
+                            source_column=None,
+                            code="row_width",
+                            message="CSV import contains an invalid record.",
+                        ),
+                    )
+                )
             total_items += 1
             if total_items > self._max_rows:
                 raise CsvRowLimitExceededError()
@@ -159,7 +184,7 @@ class CsvImportExecutionService:
             )
             result = validator.validate(source_row)
             if not result.is_valid or result.record is None:
-                raise InvalidImportedRecordError()
+                raise InvalidImportedRecordError(result.issues)
             batch.append(self._to_insert(job, result.record, record, reader.line_num))
             if len(batch) == self._batch_size:
                 await self._records.insert_batch(tuple(batch))
@@ -231,12 +256,18 @@ class CsvImportExecutionService:
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     async def _mark_failed(
-        self, import_job_id: UUID, organization_id: UUID, datasource_id: UUID
+        self,
+        import_job_id: UUID,
+        organization_id: UUID,
+        datasource_id: UUID,
+        issues: tuple[RowValidationIssue, ...] = (),
     ) -> None:
         job = await self._import_jobs.get_for_execution(
             import_job_id, organization_id, datasource_id
         )
         if job is None:
+            return
+        if job.status is not ImportJobStatus.RUNNING:
             return
         job.status = ImportJobStatus.FAILED
         job.total_items = 0
@@ -244,12 +275,17 @@ class CsvImportExecutionService:
         job.failed_items = 0
         job.completed_at = datetime.now(UTC)
         job.error_message = "CSV import execution failed."
+        await self._issues.insert_many(job.id, issues)
         await self._session.commit()
 
     async def _mark_failed_without_masking_error(
-        self, import_job_id: UUID, organization_id: UUID, datasource_id: UUID
+        self,
+        import_job_id: UUID,
+        organization_id: UUID,
+        datasource_id: UUID,
+        issues: tuple[RowValidationIssue, ...] = (),
     ) -> None:
         try:
-            await self._mark_failed(import_job_id, organization_id, datasource_id)
+            await self._mark_failed(import_job_id, organization_id, datasource_id, issues)
         except Exception:
             await self._session.rollback()
