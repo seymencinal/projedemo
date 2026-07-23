@@ -5,6 +5,12 @@ from app.exceptions.company import (
     CompanyAlreadyExistsError,
     CompanyNotFoundError,
 )
+from app.exceptions.csv_mapping import (
+    BlankSourceColumnError,
+    DuplicateSourceColumnError,
+    MissingRequiredCanonicalFieldError,
+    UnknownCanonicalFieldError,
+)
 from app.exceptions.csv_processing import (
     CsvColumnLimitExceededError,
     CsvFileNotProcessableError,
@@ -131,6 +137,14 @@ async def csv_processing_exception_handler(request: Request, error: Exception) -
     return JSONResponse(status_code=status_code, content={"detail": "CSV processing failed."})
 
 
+async def csv_mapping_exception_handler(request: Request, error: Exception) -> JSONResponse:
+    del request, error
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": "CSV mapping is invalid."},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         CompanyNotFoundError,
@@ -181,3 +195,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         CsvFileNotProcessableError,
     ):
         app.add_exception_handler(csv_error_type, csv_processing_exception_handler)
+    for csv_mapping_error_type in (
+        UnknownCanonicalFieldError,
+        MissingRequiredCanonicalFieldError,
+        DuplicateSourceColumnError,
+        BlankSourceColumnError,
+    ):
+        app.add_exception_handler(csv_mapping_error_type, csv_mapping_exception_handler)

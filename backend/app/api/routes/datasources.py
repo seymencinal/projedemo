@@ -9,9 +9,11 @@ from app.api.dependencies.research import (
     DatasourceServiceDependency,
     FileStorageDependency,
     ImportJobServiceDependency,
+    MappingPreparationServiceDependency,
     UploadedFileServiceDependency,
 )
 from app.api.dependencies.tenant import TemporaryOrganizationId
+from app.schemas.csv_mapping import CsvImportMappingAcceptedRead, CsvImportMappingRequest
 from app.schemas.csv_processing import CsvSummaryRead
 from app.schemas.datasource import DatasourceRead, DatasourceUpdate
 from app.schemas.import_job import ImportJobCreate, ImportJobRead, ImportJobTransition
@@ -106,6 +108,21 @@ async def upload_file(
         return UploadedFileRead.model_validate(item)
     finally:
         await file.close()
+
+
+@router.post(
+    "/datasources/{datasource_id}/files/{uploaded_file_id}/imports",
+    response_model=CsvImportMappingAcceptedRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def prepare_csv_import(
+    datasource_id: UUID,
+    uploaded_file_id: UUID,
+    payload: CsvImportMappingRequest,
+    service: MappingPreparationServiceDependency,
+    organization_id: TemporaryOrganizationId,
+) -> CsvImportMappingAcceptedRead:
+    return await service.prepare(datasource_id, uploaded_file_id, organization_id, payload)
 
 
 @router.post(

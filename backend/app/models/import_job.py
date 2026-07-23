@@ -1,8 +1,10 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Enum,
     ForeignKey,
@@ -12,7 +14,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -53,6 +57,7 @@ class ImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_import_jobs_research_id", "research_id"),
         Index("ix_import_jobs_status", "status"),
         Index("ix_import_jobs_organization_id_datasource_id", "organization_id", "datasource_id"),
+        Index("ix_import_jobs_uploaded_file_id", "uploaded_file_id"),
     )
     organization_id: Mapped[UUID] = mapped_column(
         ForeignKey(
@@ -70,6 +75,14 @@ class ImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         nullable=False,
     )
+    uploaded_file_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "uploaded_files.id",
+            name="fk_import_jobs_uploaded_file_id_uploaded_files",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
     datasource_id: Mapped[UUID] = mapped_column(nullable=False)
     status: Mapped[ImportJobStatus] = mapped_column(
         Enum(
@@ -84,6 +97,12 @@ class ImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     processed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    configuration: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)

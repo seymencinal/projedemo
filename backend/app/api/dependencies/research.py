@@ -8,6 +8,7 @@ from app.repositories.uploaded_file import UploadedFileRepository
 from app.services.csv_processing import CsvProcessingService
 from app.services.datasource import DatasourceService
 from app.services.import_job import ImportJobService
+from app.services.mapping_preparation import MappingPreparationService
 from app.services.research import ResearchService
 from app.services.uploaded_file import UploadedFileService
 from app.storage.local import LocalFileStorage
@@ -24,6 +25,10 @@ def get_datasource_service(session: DatabaseSession) -> DatasourceService:
 
 def get_import_job_service(session: DatabaseSession) -> ImportJobService:
     return ImportJobService(session)
+
+
+def get_mapping_preparation_service(session: DatabaseSession) -> MappingPreparationService:
+    return MappingPreparationService(session)
 
 
 def get_file_storage() -> FileStorage:
@@ -55,6 +60,9 @@ def get_csv_processing_service(
 ResearchServiceDependency = Annotated[ResearchService, Depends(get_research_service)]
 DatasourceServiceDependency = Annotated[DatasourceService, Depends(get_datasource_service)]
 ImportJobServiceDependency = Annotated[ImportJobService, Depends(get_import_job_service)]
+MappingPreparationServiceDependency = Annotated[
+    MappingPreparationService, Depends(get_mapping_preparation_service)
+]
 FileStorageDependency = Annotated[FileStorage, Depends(get_file_storage)]
 UploadedFileRepositoryDependency = Annotated[
     UploadedFileRepository, Depends(get_uploaded_file_repository)
