@@ -1,9 +1,8 @@
 import csv
 import hashlib
 import json
-import re
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -32,13 +31,11 @@ from app.repositories.uploaded_file import UploadedFileRepository
 from app.schemas.imported_record import ImportedRecordInsert
 from app.services.csv_file_access import CsvFileAccessService, CsvRowReader
 from app.services.csv_mapping_validation import validate_csv_mapping
+from app.services.import_row_validation import ImportRowValidator, SourceRow, ValidatedImportRecord
 from app.storage.protocol import FileStorage
 
 
 class CsvImportExecutionService:
-    _date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-    _sentiments = frozenset({"positive", "negative", "neutral"})
-
     def __init__(
         self,
         session: AsyncSession,
@@ -141,6 +138,7 @@ class CsvImportExecutionService:
         indexes: dict[str, int] | None = None
         total_items = 0
         batch: list[ImportedRecordInsert] = []
+        validator = ImportRowValidator(mapping)
         for record in reader:
             if not any(value.strip() for value in record):
                 continue
@@ -155,7 +153,14 @@ class CsvImportExecutionService:
                 raise CsvRowLimitExceededError()
             if indexes is None:
                 raise InvalidImportedRecordError()
-            batch.append(self._convert_record(job, mapping, indexes, record, reader.line_num))
+            source_row = SourceRow(
+                source_row_number=reader.line_num,
+                values={column: record[index] for column, index in indexes.items()},
+            )
+            result = validator.validate(source_row)
+            if not result.is_valid or result.record is None:
+                raise InvalidImportedRecordError()
+            batch.append(self._to_insert(job, result.record, record, reader.line_num))
             if len(batch) == self._batch_size:
                 await self._records.insert_batch(tuple(batch))
                 batch.clear()
@@ -177,43 +182,26 @@ class CsvImportExecutionService:
             raise MissingMappedColumnError()
         return header
 
-    def _convert_record(
+    def _to_insert(
         self,
         job: ImportJob,
-        mapping: Mapping[str, str],
-        indexes: Mapping[str, int],
-        record: list[str],
+        record: ValidatedImportRecord,
+        raw_record: list[str],
         source_row_number: int,
     ) -> ImportedRecordInsert:
-        values = {
-            field: self._optional_value(record[indexes[column]])
-            for field, column in mapping.items()
-        }
-        content = values.get("content")
-        if content is None or len(content) > 20000:
-            raise InvalidImportedRecordError()
-        author = values.get("author")
-        source_name = values.get("source_name")
-        if (author is not None and len(author) > 255) or (
-            source_name is not None and len(source_name) > 255
-        ):
-            raise InvalidImportedRecordError()
-        sentiment = values.get("sentiment")
-        if sentiment is not None and sentiment not in self._sentiments:
-            raise InvalidImportedRecordError()
         return ImportedRecordInsert(
             organization_id=job.organization_id,
             research_id=job.research_id,
             datasource_id=job.datasource_id,
             import_job_id=job.id,
             source_row_number=source_row_number,
-            raw_row_hash=self._hash_row(record),
-            content=content,
-            published_at=self._parse_datetime(values.get("published_at")),
-            author=author,
-            engagement_count=self._parse_engagement(values.get("engagement_count")),
-            sentiment=sentiment,
-            source_name=source_name,
+            raw_row_hash=self._hash_row(raw_record),
+            content=record.content,
+            published_at=record.published_at,
+            author=record.author,
+            engagement_count=record.engagement_count,
+            sentiment=record.sentiment,
+            source_name=record.source_name,
         )
 
     def _get_mapping(self, configuration: object) -> dict[str, str]:
@@ -236,38 +224,6 @@ class CsvImportExecutionService:
             raise InvalidImportJobConfigurationError() from error
         except Exception as error:
             raise InvalidImportJobConfigurationError() from error
-
-    @staticmethod
-    def _optional_value(value: str) -> str | None:
-        normalized = value.strip()
-        return normalized or None
-
-    def _parse_datetime(self, value: str | None) -> datetime | None:
-        if value is None:
-            return None
-        try:
-            if self._date_pattern.fullmatch(value):
-                return datetime.combine(date.fromisoformat(value), datetime.min.time(), tzinfo=UTC)
-            if "T" not in value:
-                raise ValueError
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if parsed.tzinfo is None:
-                raise ValueError
-            return parsed.astimezone(UTC)
-        except ValueError as error:
-            raise InvalidImportedRecordError() from error
-
-    @staticmethod
-    def _parse_engagement(value: str | None) -> int | None:
-        if value is None:
-            return None
-        try:
-            parsed = int(value)
-        except ValueError as error:
-            raise InvalidImportedRecordError() from error
-        if parsed < 0:
-            raise InvalidImportedRecordError()
-        return parsed
 
     @staticmethod
     def _hash_row(record: list[str]) -> str:

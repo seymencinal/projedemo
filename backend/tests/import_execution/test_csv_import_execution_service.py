@@ -32,6 +32,7 @@ from app.repositories.import_job import ImportJobRepository
 from app.repositories.imported_record import ImportedRecordRepository
 from app.repositories.uploaded_file import UploadedFileRepository
 from app.services.csv_import_execution import CsvImportExecutionService
+from app.services.import_row_validation import ImportRowValidator, SourceRow
 from app.storage.protocol import FileStorage
 
 ORGANIZATION_ID = UUID("00000000-0000-0000-0000-000000000010")
@@ -122,6 +123,58 @@ async def test_execute_streams_batches_and_completes_import_job() -> None:
     assert len(first_batch[0].raw_row_hash) == 64
     assert first_batch[0].source_row_number == 2
     assert session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_content", "expected_hash"),
+    [
+        ("hello", "3d876ef0ede593f67420bbc75fe5eed9d69f94092b342e8a8b851c02fe99e9e7"),
+        ("  hello  ", "44164b6e0f2d825df2e7f276b2c217e6a8cb26e76d8477035ea4a271cb5eced8"),
+        ("İstanbul", "a0612e46ed10f2c04f4db930412309464fb8e1abe1179d1e2f702c8260a318df"),
+        ("content", "9185bd4f60c330233e612dedaca6437c98fe5825e9cd1caf1534caf60777107d"),
+    ],
+)
+async def test_execute_preserves_legacy_raw_row_hash_input(
+    raw_content: str, expected_hash: str
+) -> None:
+    service, _, jobs, datasources, files, records = create_service(
+        f"body,author\n{raw_content},\n".encode()
+    )
+    job = create_job()
+    job.configuration = {"mapping": {"content": "body", "author": "author"}}
+    jobs.get_for_execution = AsyncMock(return_value=job)
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    inserted = records.insert_batch.await_args.args[0][0]
+    assert inserted.raw_row_hash == expected_hash
+    assert inserted.content == raw_content.strip()
+    assert inserted.author is None
+
+
+@pytest.mark.asyncio
+async def test_execute_rolls_back_flushed_batches_after_first_invalid_row() -> None:
+    service, session, jobs, datasources, files, records = create_service(
+        b"body,author\nfirst,writer\n,writer\nlater,writer\n"
+    )
+    service._batch_size = 1
+    job = create_job()
+    job.configuration = {"mapping": {"content": "body", "author": "author"}}
+    jobs.get_for_execution = AsyncMock(side_effect=[job, job])
+    datasources.get = AsyncMock(return_value=SimpleNamespace())
+    files.get = AsyncMock(return_value=create_file())
+
+    with pytest.raises(InvalidImportedRecordError):
+        await service.execute(job.id, ORGANIZATION_ID, DATASOURCE_ID)
+
+    assert records.insert_batch.await_count == 1
+    assert records.insert_batch.await_args.args[0][0].content == "first"
+    assert session.rollback.await_count == 1
+    assert job.status is ImportJobStatus.FAILED
+    assert job.error_message == "CSV import execution failed."
 
 
 @pytest.mark.asyncio
@@ -366,43 +419,41 @@ def test_validate_header_trims_values_and_rejects_structural_errors() -> None:
 
 
 def test_convert_record_enforces_field_limits_and_normalizes_optional_values() -> None:
-    service, _, _, _, _, _ = create_service(b"")
-    job = create_job()
     mapping = {
         "content": "body",
         "author": "author",
         "source_name": "source",
         "sentiment": "sentiment",
     }
-    indexes = {column: index for index, column in enumerate(mapping.values())}
-    result = service._convert_record(
-        job,
-        mapping,
-        indexes,
-        ["x" * 20000, "a" * 255, "s" * 255, " neutral "],
-        7,
+    result = ImportRowValidator(mapping).validate(
+        SourceRow(
+            7,
+            {
+                "body": "x" * 20_000,
+                "author": "a" * 255,
+                "source": "s" * 255,
+                "sentiment": " neutral ",
+            },
+        )
     )
 
-    assert result.source_row_number == 7
-    assert result.sentiment == "neutral"
-    with pytest.raises(InvalidImportedRecordError):
-        service._convert_record(job, {"content": "body"}, {"body": 0}, ["x" * 20001], 1)
-    with pytest.raises(InvalidImportedRecordError):
-        service._convert_record(
-            job,
-            {"content": "body", "author": "author"},
-            {"body": 0, "author": 1},
-            ["ok", "a" * 256],
-            1,
-        )
-    with pytest.raises(InvalidImportedRecordError):
-        service._convert_record(
-            job,
-            {"content": "body", "sentiment": "sentiment"},
-            {"body": 0, "sentiment": 1},
-            ["ok", "Positive"],
-            1,
-        )
+    assert result.record is not None
+    assert result.record.sentiment == "neutral"
+    assert (
+        not ImportRowValidator({"content": "body"})
+        .validate(SourceRow(1, {"body": "x" * 20_001}))
+        .is_valid
+    )
+    assert (
+        not ImportRowValidator({"content": "body", "author": "author"})
+        .validate(SourceRow(1, {"body": "ok", "author": "a" * 256}))
+        .is_valid
+    )
+    assert (
+        not ImportRowValidator({"content": "body", "sentiment": "sentiment"})
+        .validate(SourceRow(1, {"body": "ok", "sentiment": "Positive"}))
+        .is_valid
+    )
 
 
 @pytest.mark.asyncio
@@ -432,17 +483,31 @@ async def test_execute_marks_job_failed_for_malformed_csv() -> None:
     ],
 )
 def test_parse_engagement_accepts_supported_values(value: str | None, expected: int | None) -> None:
-    assert CsvImportExecutionService._parse_engagement(value) == expected
+    source_value = value or ""
+    result = ImportRowValidator({"content": "body", "engagement_count": "engagement"}).validate(
+        SourceRow(2, {"body": "content", "engagement": source_value})
+    )
+
+    assert result.record is not None
+    assert result.record.engagement_count == expected
 
 
 def test_optional_value_normalizes_whitespace_to_none() -> None:
-    assert CsvImportExecutionService._optional_value("  ") is None
+    result = ImportRowValidator({"content": "body", "author": "author"}).validate(
+        SourceRow(2, {"body": "content", "author": "  "})
+    )
+
+    assert result.record is not None
+    assert result.record.author is None
 
 
 @pytest.mark.parametrize("value", ["-1", "1.2", "value"])
 def test_parse_engagement_rejects_invalid_values(value: str) -> None:
-    with pytest.raises(InvalidImportedRecordError):
-        CsvImportExecutionService._parse_engagement(value)
+    result = ImportRowValidator({"content": "body", "engagement_count": "engagement"}).validate(
+        SourceRow(2, {"body": "content", "engagement": value})
+    )
+
+    assert not result.is_valid
 
 
 @pytest.mark.parametrize(
@@ -455,15 +520,21 @@ def test_parse_engagement_rejects_invalid_values(value: str) -> None:
     ],
 )
 def test_parse_datetime_normalizes_supported_values(value: str, expected: datetime) -> None:
-    service, _, _, _, _, _ = create_service(b"")
-    assert service._parse_datetime(value) == expected
+    result = ImportRowValidator({"content": "body", "published_at": "published"}).validate(
+        SourceRow(2, {"body": "content", "published": value})
+    )
+
+    assert result.record is not None
+    assert result.record.published_at == expected
 
 
 @pytest.mark.parametrize("value", ["2026-02-30", "23/07/2026", "2026-07-23T12:00:00"])
 def test_parse_datetime_rejects_unsupported_values(value: str) -> None:
-    service, _, _, _, _, _ = create_service(b"")
-    with pytest.raises(InvalidImportedRecordError):
-        service._parse_datetime(value)
+    result = ImportRowValidator({"content": "body", "published_at": "published"}).validate(
+        SourceRow(2, {"body": "content", "published": value})
+    )
+
+    assert not result.is_valid
 
 
 def test_hash_row_is_deterministic_ordered_and_fixed_length() -> None:
