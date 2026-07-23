@@ -106,3 +106,19 @@ def test_base_metadata_contains_expected_application_tables() -> None:
     assert Base.metadata.tables["import_jobs"] is ImportJob.__table__
     assert Base.metadata.tables["imported_records"] is ImportedRecord.__table__
     assert Base.metadata.tables["uploaded_files"] is UploadedFile.__table__
+
+
+def test_metadata_constraint_and_index_names_fit_postgresql_identifier_limit() -> None:
+    names = [
+        str(constraint.name)
+        for table in Base.metadata.tables.values()
+        for constraint in table.constraints
+        if constraint.name is not None
+    ] + [
+        str(index.name)
+        for table in Base.metadata.tables.values()
+        for index in table.indexes
+        if index.name is not None
+    ]
+
+    assert all(len(name) <= 63 for name in names)
