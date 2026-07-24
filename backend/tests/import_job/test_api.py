@@ -61,8 +61,8 @@ def import_job(
 def client_with_service() -> tuple[TestClient, MagicMock]:
     service = MagicMock(spec=ImportJobService)
     service.create = AsyncMock(return_value=import_job())
-    service.list = AsyncMock(return_value=[import_job()])
-    service.get = AsyncMock(return_value=import_job())
+    service.list_with_validation_issue_count = AsyncMock(return_value=[(import_job(), 0)])
+    service.get_with_validation_issue_count = AsyncMock(return_value=(import_job(), 0))
     service.transition = AsyncMock(return_value=import_job(ImportJobStatus.RUNNING))
     app = FastAPI()
     register_exception_handlers(app)
@@ -77,6 +77,8 @@ def headers(organization_id: UUID = ORGANIZATION_ID) -> dict[str, str]:
 
 def test_import_job_create_list_get_and_response_serialization() -> None:
     client, service = client_with_service()
+    validation_failed = import_job(ImportJobStatus.FAILED, error_message="failed")
+    service.get_with_validation_issue_count.return_value = (validation_failed, 3)
 
     created = client.post(
         f"/datasources/{DATASOURCE_ID}/import-jobs",
@@ -91,13 +93,22 @@ def test_import_job_create_list_get_and_response_serialization() -> None:
     assert fetched.status_code == 200
     assert created.json()["id"] == str(IMPORT_JOB_ID)
     assert created.json()["status"] == "pending"
+    assert created.json()["validation_issue_count"] == 0
     assert created.json()["created_at"].endswith("Z")
     assert listed.json()[0]["datasource_id"] == str(DATASOURCE_ID)
+    assert listed.json()[0]["validation_issue_count"] == 0
+    assert fetched.json()["validation_issue_count"] == 3
     assert service.create.await_args.args[0] == DATASOURCE_ID
     assert service.create.await_args.args[1] == ORGANIZATION_ID
     assert service.create.await_args.args[2].idempotency_key == "key"
-    assert service.list.await_args.args == (DATASOURCE_ID, ORGANIZATION_ID)
-    assert service.get.await_args.args == (IMPORT_JOB_ID, ORGANIZATION_ID)
+    assert service.list_with_validation_issue_count.await_args.args == (
+        DATASOURCE_ID,
+        ORGANIZATION_ID,
+    )
+    assert service.get_with_validation_issue_count.await_args.args == (
+        IMPORT_JOB_ID,
+        ORGANIZATION_ID,
+    )
 
 
 @pytest.mark.parametrize(
@@ -257,7 +268,7 @@ def test_import_job_api_maps_domain_exceptions_safely(
             json={"idempotency_key": "key"},
         )
     elif method == "get":
-        service.get.side_effect = side_effect
+        service.get_with_validation_issue_count.side_effect = side_effect
         response = client.get(f"/import-jobs/{IMPORT_JOB_ID}", headers=headers())
     else:
         service.transition.side_effect = side_effect
@@ -274,8 +285,8 @@ def test_import_job_api_maps_domain_exceptions_safely(
 def test_import_job_api_forwards_other_tenant_and_maps_isolation_to_not_found() -> None:
     client, service = client_with_service()
     service.create.side_effect = DatasourceNotFoundError(DATASOURCE_ID)
-    service.list.side_effect = DatasourceNotFoundError(DATASOURCE_ID)
-    service.get.side_effect = ImportJobNotFoundError(IMPORT_JOB_ID)
+    service.list_with_validation_issue_count.side_effect = DatasourceNotFoundError(DATASOURCE_ID)
+    service.get_with_validation_issue_count.side_effect = ImportJobNotFoundError(IMPORT_JOB_ID)
     service.transition.side_effect = ImportJobNotFoundError(IMPORT_JOB_ID)
 
     assert (
@@ -307,6 +318,6 @@ def test_import_job_api_forwards_other_tenant_and_maps_isolation_to_not_found() 
         == 404
     )
     assert service.create.await_args.args[1] == OTHER_ORGANIZATION_ID
-    assert service.list.await_args.args[1] == OTHER_ORGANIZATION_ID
-    assert service.get.await_args.args[1] == OTHER_ORGANIZATION_ID
+    assert service.list_with_validation_issue_count.await_args.args[1] == OTHER_ORGANIZATION_ID
+    assert service.get_with_validation_issue_count.await_args.args[1] == OTHER_ORGANIZATION_ID
     assert service.transition.await_args.args[1] == OTHER_ORGANIZATION_ID

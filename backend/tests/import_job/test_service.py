@@ -78,6 +78,45 @@ async def test_get_and_list_are_tenant_scoped_and_raise_not_found() -> None:
 
 
 @pytest.mark.asyncio
+async def test_summary_reads_return_validation_issue_counts_and_preserve_scope() -> None:
+    service, _, repository, source_repository = create_service()
+    successful = create_job(ImportJobStatus.COMPLETED)
+    validation_failed = create_job(ImportJobStatus.FAILED)
+    repository.get_with_validation_issue_count = AsyncMock(return_value=(validation_failed, 3))
+    repository.list_with_validation_issue_count = AsyncMock(
+        return_value=[(successful, 0), (validation_failed, 3)]
+    )
+    source_repository.get = AsyncMock(return_value=SimpleNamespace(research_id=RESEARCH_ID))
+
+    assert await service.get_with_validation_issue_count(validation_failed.id, ORGANIZATION_ID) == (
+        validation_failed,
+        3,
+    )
+    assert await service.list_with_validation_issue_count(DATASOURCE_ID, ORGANIZATION_ID) == [
+        (successful, 0),
+        (validation_failed, 3),
+    ]
+    repository.get_with_validation_issue_count.assert_awaited_once_with(
+        validation_failed.id, ORGANIZATION_ID
+    )
+    repository.list_with_validation_issue_count.assert_awaited_once_with(
+        DATASOURCE_ID, ORGANIZATION_ID
+    )
+
+
+@pytest.mark.asyncio
+async def test_summary_reads_preserve_existing_not_found_behavior() -> None:
+    service, _, repository, source_repository = create_service()
+    repository.get_with_validation_issue_count = AsyncMock(return_value=None)
+    source_repository.get = AsyncMock(return_value=None)
+
+    with pytest.raises(ImportJobNotFoundError):
+        await service.get_with_validation_issue_count(uuid4(), ORGANIZATION_ID)
+    with pytest.raises(DatasourceNotFoundError):
+        await service.list_with_validation_issue_count(DATASOURCE_ID, ORGANIZATION_ID)
+
+
+@pytest.mark.asyncio
 async def test_create_derives_relationships_and_enforces_datasource_scoped_idempotency() -> None:
     service, session, repository, source_repository = create_service()
     source_repository.get = AsyncMock(return_value=SimpleNamespace(research_id=RESEARCH_ID))

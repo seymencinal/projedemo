@@ -57,6 +57,39 @@ async def test_get_returns_none_for_cross_tenant_or_missing_job() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_with_validation_issue_count_scopes_job_and_returns_aggregate() -> None:
+    job = create_job()
+    job.id = uuid4()
+    result = MagicMock()
+    result.one_or_none.return_value = (job, 3)
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock(return_value=result)
+
+    returned = await ImportJobRepository(session).get_with_validation_issue_count(
+        job.id,
+        ORGANIZATION_ID,
+    )
+
+    assert returned == (job, 3)
+    statement = session.execute.await_args.args[0]
+    assert {job.id, ORGANIZATION_ID} <= set(statement.compile().params.values())
+    assert "count(import_validation_issues.id)" in str(statement)
+
+
+@pytest.mark.asyncio
+async def test_get_with_validation_issue_count_returns_none_when_missing() -> None:
+    result = MagicMock()
+    result.one_or_none.return_value = None
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock(return_value=result)
+
+    assert (
+        await ImportJobRepository(session).get_with_validation_issue_count(uuid4(), ORGANIZATION_ID)
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_get_by_key_scopes_duplicate_detection_to_organization_and_datasource() -> None:
     job = create_job()
     result = MagicMock()
@@ -103,6 +136,26 @@ async def test_list_returns_persisted_jobs_in_repository_order() -> None:
     session.execute = AsyncMock(return_value=result)
 
     assert await ImportJobRepository(session).list(DATASOURCE_ID, ORGANIZATION_ID) == jobs
+
+
+@pytest.mark.asyncio
+async def test_list_with_validation_issue_count_returns_zero_and_multiple_counts() -> None:
+    successful = create_job()
+    validation_failed = create_job()
+    result = MagicMock()
+    result.all.return_value = [(successful, 0), (validation_failed, 4)]
+    session = MagicMock(spec=AsyncSession)
+    session.execute = AsyncMock(return_value=result)
+
+    returned = await ImportJobRepository(session).list_with_validation_issue_count(
+        DATASOURCE_ID,
+        ORGANIZATION_ID,
+    )
+
+    assert returned == [(successful, 0), (validation_failed, 4)]
+    statement = session.execute.await_args.args[0]
+    assert {DATASOURCE_ID, ORGANIZATION_ID} <= set(statement.compile().params.values())
+    assert "count(import_validation_issues.id)" in str(statement)
 
 
 @pytest.mark.asyncio

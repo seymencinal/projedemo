@@ -15,6 +15,7 @@ from app.api.dependencies.research import (
     UploadedFileServiceDependency,
 )
 from app.api.dependencies.tenant import TemporaryOrganizationId
+from app.models.import_job import ImportJob
 from app.schemas.csv_mapping import CsvImportMappingAcceptedRead, CsvImportMappingRequest
 from app.schemas.csv_processing import CsvSummaryRead
 from app.schemas.datasource import DatasourceRead, DatasourceUpdate
@@ -28,6 +29,12 @@ router = APIRouter(tags=["datasources"])
 def upload_chunks(upload: UploadFile) -> Iterator[bytes]:
     while chunk := upload.file.read(64 * 1024):
         yield chunk
+
+
+def import_job_read(item: ImportJob, validation_issue_count: int = 0) -> ImportJobRead:
+    return ImportJobRead.model_validate(item).model_copy(
+        update={"validation_issue_count": validation_issue_count}
+    )
 
 
 @router.get("/datasources/{datasource_id}", response_model=DatasourceRead)
@@ -72,9 +79,7 @@ async def create_import_job(
     service: ImportJobServiceDependency,
     organization_id: TemporaryOrganizationId,
 ) -> ImportJobRead:
-    return ImportJobRead.model_validate(
-        await service.create(datasource_id, organization_id, payload)
-    )
+    return import_job_read(await service.create(datasource_id, organization_id, payload))
 
 
 @router.post(
@@ -138,9 +143,7 @@ async def execute_csv_import(
     service: CsvImportExecutionServiceDependency,
     organization_id: TemporaryOrganizationId,
 ) -> ImportJobRead:
-    return ImportJobRead.model_validate(
-        await service.execute(import_job_id, organization_id, datasource_id)
-    )
+    return import_job_read(await service.execute(import_job_id, organization_id, datasource_id))
 
 
 @router.get(
@@ -184,8 +187,10 @@ async def list_import_jobs(
     organization_id: TemporaryOrganizationId,
 ) -> list[ImportJobRead]:
     return [
-        ImportJobRead.model_validate(item)
-        for item in await service.list(datasource_id, organization_id)
+        import_job_read(item, validation_issue_count)
+        for item, validation_issue_count in await service.list_with_validation_issue_count(
+            datasource_id, organization_id
+        )
     ]
 
 
@@ -195,7 +200,10 @@ async def get_import_job(
     service: ImportJobServiceDependency,
     organization_id: TemporaryOrganizationId,
 ) -> ImportJobRead:
-    return ImportJobRead.model_validate(await service.get(import_job_id, organization_id))
+    item, validation_issue_count = await service.get_with_validation_issue_count(
+        import_job_id, organization_id
+    )
+    return import_job_read(item, validation_issue_count)
 
 
 @router.patch("/import-jobs/{import_job_id}/status", response_model=ImportJobRead)
@@ -205,6 +213,4 @@ async def transition_import_job(
     service: ImportJobServiceDependency,
     organization_id: TemporaryOrganizationId,
 ) -> ImportJobRead:
-    return ImportJobRead.model_validate(
-        await service.transition(import_job_id, organization_id, payload)
-    )
+    return import_job_read(await service.transition(import_job_id, organization_id, payload))

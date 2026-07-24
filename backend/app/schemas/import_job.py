@@ -34,6 +34,7 @@ class ImportJobRead(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    validation_issue_count: int = Field(default=0, ge=0)
     model_config = ConfigDict(from_attributes=True)
 
 

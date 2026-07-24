@@ -103,6 +103,36 @@ def test_read_supports_orm_attributes_and_nullable_lifecycle_fields() -> None:
     )
 
     assert pending.started_at is None and pending.completed_at is None
+    assert pending.validation_issue_count == 0
     assert terminal.status is ImportJobStatus.COMPLETED
     assert terminal.model_dump(mode="json")["id"] == str(job_id)
     assert terminal.model_dump(mode="json")["created_at"].endswith("Z")
+
+
+def test_read_serializes_validation_issue_count_and_rejects_negative_values() -> None:
+    now = datetime(2026, 7, 22, tzinfo=UTC)
+    job = SimpleNamespace(
+        id=uuid4(),
+        organization_id=uuid4(),
+        research_id=uuid4(),
+        datasource_id=uuid4(),
+        status=ImportJobStatus.FAILED,
+        total_items=0,
+        processed_items=0,
+        failed_items=0,
+        error_message="failed",
+        idempotency_key="key",
+        started_at=now,
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+
+    assert (
+        ImportJobRead.model_validate(
+            {**vars(job), "validation_issue_count": 3}
+        ).validation_issue_count
+        == 3
+    )
+    with pytest.raises(ValidationError):
+        ImportJobRead.model_validate({**vars(job), "validation_issue_count": -1})

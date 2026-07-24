@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from builtins import list as builtin_list
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -33,10 +36,32 @@ class ImportJobService:
             raise ImportJobNotFoundError(item_id)
         return item
 
+    async def get_with_validation_issue_count(
+        self,
+        item_id: UUID,
+        organization_id: UUID,
+    ) -> tuple[ImportJob, int]:
+        item = await self._repository.get_with_validation_issue_count(item_id, organization_id)
+        if item is None:
+            raise ImportJobNotFoundError(item_id)
+        return item
+
     async def list(self, datasource_id: UUID, organization_id: UUID) -> list[ImportJob]:
         if await self._datasource_repository.get(datasource_id, organization_id) is None:
             raise DatasourceNotFoundError(datasource_id)
         return await self._repository.list(datasource_id, organization_id)
+
+    async def list_with_validation_issue_count(
+        self,
+        datasource_id: UUID,
+        organization_id: UUID,
+    ) -> builtin_list[tuple[ImportJob, int]]:
+        if await self._datasource_repository.get(datasource_id, organization_id) is None:
+            raise DatasourceNotFoundError(datasource_id)
+        return await self._repository.list_with_validation_issue_count(
+            datasource_id,
+            organization_id,
+        )
 
     async def create(
         self, datasource_id: UUID, organization_id: UUID, payload: ImportJobCreate
