@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from contextlib import suppress
 from uuid import UUID
 
-from fastapi import APIRouter, Response, UploadFile, status
+from fastapi import APIRouter, Query, Response, UploadFile, status
 
 from app.api.dependencies.research import (
     CsvImportExecutionServiceDependency,
@@ -10,6 +10,7 @@ from app.api.dependencies.research import (
     DatasourceServiceDependency,
     FileStorageDependency,
     ImportJobServiceDependency,
+    ImportValidationIssueServiceDependency,
     MappingPreparationServiceDependency,
     UploadedFileServiceDependency,
 )
@@ -18,6 +19,7 @@ from app.schemas.csv_mapping import CsvImportMappingAcceptedRead, CsvImportMappi
 from app.schemas.csv_processing import CsvSummaryRead
 from app.schemas.datasource import DatasourceRead, DatasourceUpdate
 from app.schemas.import_job import ImportJobCreate, ImportJobRead, ImportJobTransition
+from app.schemas.import_validation_issue import ImportValidationIssuePage
 from app.schemas.uploaded_file import UploadedFileCreate, UploadedFileRead
 
 router = APIRouter(tags=["datasources"])
@@ -138,6 +140,27 @@ async def execute_csv_import(
 ) -> ImportJobRead:
     return ImportJobRead.model_validate(
         await service.execute(import_job_id, organization_id, datasource_id)
+    )
+
+
+@router.get(
+    "/datasources/{datasource_id}/import-jobs/{import_job_id}/validation-issues",
+    response_model=ImportValidationIssuePage,
+)
+async def list_import_validation_issues(
+    datasource_id: UUID,
+    import_job_id: UUID,
+    service: ImportValidationIssueServiceDependency,
+    organization_id: TemporaryOrganizationId,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> ImportValidationIssuePage:
+    return await service.list_for_import_job(
+        organization_id,
+        datasource_id,
+        import_job_id,
+        offset=offset,
+        limit=limit,
     )
 
 

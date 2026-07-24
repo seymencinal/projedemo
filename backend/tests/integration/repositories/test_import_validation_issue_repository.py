@@ -125,3 +125,30 @@ async def test_import_validation_issue_database_constraints_and_job_cascade(
     await integration_session.delete(job)
     await integration_session.flush()
     assert await integration_session.scalar(select(ImportValidationIssue)) is None
+
+
+@pytest.mark.asyncio
+async def test_list_and_count_for_import_job_are_scoped_ordered_and_paginated(
+    integration_session: AsyncSession,
+) -> None:
+    target_job = await make_import_job(integration_session)
+    other_job = await make_import_job(integration_session)
+    repository = ImportValidationIssueRepository(integration_session)
+    await repository.insert_many(
+        target_job.id,
+        (
+            RowValidationIssue(10, "content", "body", "required", "safe"),
+            RowValidationIssue(2, "content", "body", "required", "safe"),
+            RowValidationIssue(2, "sentiment", None, "invalid_sentiment", "safe"),
+        ),
+    )
+    await repository.insert_many(
+        other_job.id,
+        (RowValidationIssue(1, "content", "body", "required", "safe"),),
+    )
+
+    items = await repository.list_for_import_job(target_job.id, offset=0, limit=2)
+
+    assert [(item.source_row_number, item.issue_order) for item in items] == [(2, 1), (2, 2)]
+    assert await repository.count_for_import_job(target_job.id) == 3
+    assert await repository.list_for_import_job(target_job.id, offset=3, limit=100) == []
