@@ -9,6 +9,7 @@ from app.api.dependencies.research import (
     CsvProcessingServiceDependency,
     DatasourceServiceDependency,
     FileStorageDependency,
+    ImportedRecordServiceDependency,
     ImportJobServiceDependency,
     ImportValidationIssueServiceDependency,
     MappingPreparationServiceDependency,
@@ -21,6 +22,7 @@ from app.schemas.csv_processing import CsvSummaryRead
 from app.schemas.datasource import DatasourceRead, DatasourceUpdate
 from app.schemas.import_job import ImportJobCreate, ImportJobRead, ImportJobTransition
 from app.schemas.import_validation_issue import ImportValidationIssuePage
+from app.schemas.imported_record import ImportedRecordPage
 from app.schemas.uploaded_file import UploadedFileCreate, UploadedFileRead
 
 router = APIRouter(tags=["datasources"])
@@ -158,6 +160,27 @@ async def list_import_validation_issues(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ImportValidationIssuePage:
+    return await service.list_for_import_job(
+        organization_id,
+        datasource_id,
+        import_job_id,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/datasources/{datasource_id}/import-jobs/{import_job_id}/records",
+    response_model=ImportedRecordPage,
+)
+async def list_imported_records(
+    datasource_id: UUID,
+    import_job_id: UUID,
+    service: ImportedRecordServiceDependency,
+    organization_id: TemporaryOrganizationId,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> ImportedRecordPage:
     return await service.list_for_import_job(
         organization_id,
         datasource_id,

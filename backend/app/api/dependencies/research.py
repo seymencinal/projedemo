@@ -10,6 +10,7 @@ from app.services.csv_processing import CsvProcessingService
 from app.services.datasource import DatasourceService
 from app.services.import_job import ImportJobService
 from app.services.import_validation_issue import ImportValidationIssueService
+from app.services.imported_record import ImportedRecordService
 from app.services.mapping_preparation import MappingPreparationService
 from app.services.research import ResearchService
 from app.services.uploaded_file import UploadedFileService
@@ -31,6 +32,10 @@ def get_import_job_service(session: DatabaseSession) -> ImportJobService:
 
 def get_import_validation_issue_service(session: DatabaseSession) -> ImportValidationIssueService:
     return ImportValidationIssueService(session)
+
+
+def get_imported_record_service(session: DatabaseSession) -> ImportedRecordService:
+    return ImportedRecordService(session)
 
 
 def get_mapping_preparation_service(session: DatabaseSession) -> MappingPreparationService:
@@ -82,6 +87,9 @@ DatasourceServiceDependency = Annotated[DatasourceService, Depends(get_datasourc
 ImportJobServiceDependency = Annotated[ImportJobService, Depends(get_import_job_service)]
 ImportValidationIssueServiceDependency = Annotated[
     ImportValidationIssueService, Depends(get_import_validation_issue_service)
+]
+ImportedRecordServiceDependency = Annotated[
+    ImportedRecordService, Depends(get_imported_record_service)
 ]
 MappingPreparationServiceDependency = Annotated[
     MappingPreparationService, Depends(get_mapping_preparation_service)

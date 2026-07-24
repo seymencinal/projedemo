@@ -1,6 +1,7 @@
 from collections.abc import Sequence
+from uuid import UUID
 
-from sqlalchemy import insert
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.imported_record import ImportedRecord
@@ -34,3 +35,27 @@ class ImportedRecordRepository:
                 for record in records
             ],
         )
+
+    async def list_for_import_job(
+        self,
+        import_job_id: UUID,
+        *,
+        offset: int,
+        limit: int,
+    ) -> list[ImportedRecord]:
+        result = await self._session.execute(
+            select(ImportedRecord)
+            .where(ImportedRecord.import_job_id == import_job_id)
+            .order_by(ImportedRecord.source_row_number.asc(), ImportedRecord.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def count_for_import_job(self, import_job_id: UUID) -> int:
+        count = await self._session.scalar(
+            select(func.count())
+            .select_from(ImportedRecord)
+            .where(ImportedRecord.import_job_id == import_job_id)
+        )
+        return int(count or 0)

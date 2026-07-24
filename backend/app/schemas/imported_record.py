@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 
 @dataclass(frozen=True, slots=True)
 class ImportedRecordInsert:
@@ -17,3 +19,18 @@ class ImportedRecordInsert:
     engagement_count: int | None
     sentiment: str | None
     source_name: str | None
+
+
+class ImportedRecordRead(BaseModel):
+    id: UUID
+    source_row_number: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportedRecordPage(BaseModel):
+    items: list[ImportedRecordRead]
+    offset: int
+    limit: int
+    total: int
